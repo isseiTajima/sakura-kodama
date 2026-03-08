@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
 
 const WSPort = 34567
+const broadcastTimeout = 1 * time.Second
 
 // Server はWebSocketサーバーを管理する。
 type Server struct {
@@ -49,6 +51,7 @@ func (s *Server) Broadcast(e Event) {
 
 	var failed []*websocket.Conn
 	for conn := range s.clients {
+		conn.SetWriteDeadline(time.Now().Add(broadcastTimeout))
 		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 			failed = append(failed, conn)
 		}

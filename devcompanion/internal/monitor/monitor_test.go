@@ -1,90 +1,38 @@
 package monitor
 
 import (
+	"context"
 	"testing"
+	"time"
+
+	"devcompanion/internal/config"
+	"devcompanion/internal/types"
 )
 
-// --- 結合テスト: Fail→Editing の特別ルール ---
-//
-// 特別ルール: 直前の State が Fail で次の State が Editing に遷移したとき、
-// Task を FixFailingTests に強制設定する。
-// このルールは monitor.go の Run() ループが管理するが、
-// テスタビリティのために applySpecialTaskRule() として純粋関数に抽出する。
+func TestMonitor_Pipeline(t *testing.T) {
+	cfg := config.DefaultAppConfig()
+	m, _ := New(cfg, ".")
 
-func TestApplySpecialTaskRule_FailToEditing_SetsFixFailingTests(t *testing.T) {
-	// Given: 直前が Fail・次が Editing・現在のタスクが GenerateCode
-	prevState := StateFail
-	nextState := StateEditing
-	currentTask := TaskGenerateCode
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// When: 特別ルールを適用
-	result := applySpecialTaskRule(prevState, nextState, currentTask)
+	go m.Run(ctx)
 
-	// Then: FixFailingTests に強制変更される
-	if result != TaskFixFailingTests {
-		t.Errorf("want %s, got %s", TaskFixFailingTests, result)
+	// シグナルを注入してイベントを確認
+	sig := types.Signal{
+		Type:      types.SigGitCommit,
+		Source:    types.SourceGit,
+		Timestamp: time.Now(),
 	}
-}
+	m.signals <- sig
+	m.signals <- sig
 
-func TestApplySpecialTaskRule_FailToEditing_AnyTask_SetsFixFailingTests(t *testing.T) {
-	// Given: 直前が Fail・次が Editing・様々なタスク
-	prevState := StateFail
-	nextState := StateEditing
-
-	for _, task := range []TaskType{TaskPlan, TaskRunTests, TaskDebug, TaskLintFormat, TaskGenerateCode} {
-		// When: 特別ルールを適用
-		result := applySpecialTaskRule(prevState, nextState, task)
-
-		// Then: 常に FixFailingTests
-		if result != TaskFixFailingTests {
-			t.Errorf("task=%s: want %s, got %s", task, TaskFixFailingTests, result)
+	select {
+	case ev := <-m.Events():
+		if ev.State != types.StateCoding {
+			t.Errorf("expected StateCoding, got %v", ev.State)
 		}
-	}
-}
-
-func TestApplySpecialTaskRule_NonFail_PrevState_PreservesTask(t *testing.T) {
-	// Given: 直前が Fail 以外・次が Editing
-	nextState := StateEditing
-	task := TaskRunTests
-
-	for _, prevState := range []StateType{StateIdle, StateRunning, StateThinking, StateEditing, StateSuccess} {
-		// When: 特別ルールを適用
-		result := applySpecialTaskRule(prevState, nextState, task)
-
-		// Then: タスクが変更されない（Fail→Editing の場合のみ特別ルールが適用される）
-		if result != task {
-			t.Errorf("prevState=%s: want %s (task unchanged), got %s", prevState, task, result)
-		}
-	}
-}
-
-func TestApplySpecialTaskRule_FailToDifferentState_PreservesTask(t *testing.T) {
-	// Given: 直前が Fail・次が Editing 以外
-	prevState := StateFail
-	task := TaskRunTests
-
-	for _, nextState := range []StateType{StateIdle, StateRunning, StateThinking, StateSuccess, StateFail} {
-		// When: 特別ルールを適用
-		result := applySpecialTaskRule(prevState, nextState, task)
-
-		// Then: タスクが変更されない（次が Editing でないため）
-		if result != task {
-			t.Errorf("nextState=%s: want %s (task unchanged), got %s", nextState, task, result)
-		}
-	}
-}
-
-func TestApplySpecialTaskRule_FixFailingTests_AlreadySet_StaysFixed(t *testing.T) {
-	// Given: 直前が Fail・次が Editing・タスクが既に FixFailingTests
-	prevState := StateFail
-	nextState := StateEditing
-	task := TaskFixFailingTests
-
-	// When: 特別ルールを適用
-	result := applySpecialTaskRule(prevState, nextState, task)
-
-	// Then: FixFailingTests のまま
-	if result != TaskFixFailingTests {
-		t.Errorf("want %s, got %s", TaskFixFailingTests, result)
+	case <-time.After(1 * time.Second):
+		t.Error("expected event, got none")
 	}
 }

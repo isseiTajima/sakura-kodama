@@ -40,12 +40,12 @@ func Transition(current StateType, in TransitionInput) StateType {
 		return StateFail
 	}
 
-	if !in.ProcessRunning {
-		return StateIdle
-	}
-
 	if in.FileChanged {
 		return StateEditing
+	}
+
+	if !in.ProcessRunning {
+		return StateIdle
 	}
 
 	if in.SilenceDuration >= in.SilenceThreshold {

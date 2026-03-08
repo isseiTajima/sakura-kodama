@@ -1,101 +1,93 @@
 package main
 
 import (
-	"context"
+	"embed"
 	"log"
+	"path/filepath"
 
 	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/menu"
+	"github.com/wailsapp/wails/v2/pkg/menu/keys"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"devcompanion/internal/config"
 	"devcompanion/internal/llm"
 	"devcompanion/internal/monitor"
+	"devcompanion/internal/observer"
+	"devcompanion/internal/profile"
 	"devcompanion/internal/ws"
 )
 
+//go:embed all:frontend/dist
+var assets embed.FS
+
+//go:embed frontend/src/assets/chara.png
+var icon []byte
+
 func main() {
-	cfgPath, err := config.DefaultConfigPath()
+	// 1. Config 読み込み
+	appCfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatalf("config path: %v", err)
-	}
-	cfg, err := config.Load(cfgPath)
-	if err != nil {
-		log.Printf("config load error (using default): %v", err)
-		cfg = config.DefaultConfig()
+		log.Printf("Warning: failed to load config: %v", err)
 	}
 
-	mon, err := monitor.New(cfg, ".")
+	width, height := ScaledDimensions(appCfg.Scale)
+
+	// 2. モジュール初期化
+	mon, err := monitor.New(appCfg, ".")
 	if err != nil {
 		log.Fatalf("monitor init: %v", err)
 	}
 
+	cfgPath, _ := config.DefaultConfigPath()
+	profilePath := filepath.Join(filepath.Dir(cfgPath), "dev_profile.json")
+	profileStore, _ := profile.NewProfileStore(profilePath)
+	if profileStore == nil {
+		profileStore = &profile.ProfileStore{} 
+	}
+
+	devObserver, _ := observer.NewDevObserver(".")
 	wsServer := ws.NewServer()
-	speechGen := llm.NewSpeechGenerator(cfg.Model)
-	app := NewApp(cfg, speechGen, wsServer)
+	speechGen := llm.NewSpeechGenerator(&appCfg.Config)
+	
+	app := NewApp(&appCfg.Config, speechGen, wsServer, profileStore, assets, icon, devObserver)
+	app.SetMonitor(mon)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// 3. アプリケーションメニュー（左上）の作成
+	appMenu := menu.NewMenu()
+	appMenu.Append(menu.AppMenu())
+	settingsMenu := appMenu.AddSubmenu("設定")
+	settingsMenu.AddText("設定を開く", keys.CmdOrCtrl(","), func(_ *menu.CallbackData) {
+		wailsRuntime.EventsEmit(app.ctx, "open-settings")
+	})
+	appMenu.Append(menu.EditMenu())
+	appMenu.Append(menu.WindowMenu())
 
-	go mon.Run(ctx)
-	go func() {
-		if err := wsServer.Start(); err != nil {
-			log.Printf("websocket server: %v", err)
-		}
-	}()
-	go pipeline(ctx, mon.Events(), speechGen, wsServer, cfg)
-
+	// 4. Wails 実行
 	if err := wails.Run(&options.App{
 		Title:            "DevCompanion",
-		Width:            200,
-		Height:           300,
+		Width:            width,
+		Height:           height,
 		Frameless:        true,
-		BackgroundColour: &options.RGBA{R: 0, G: 0, B: 0, A: 0},
-		AlwaysOnTop:      cfg.AlwaysOnTop,
+		DisableResize:    true,
+		BackgroundColour: &options.RGBA{R: 0, G: 0, B: 0, A: 0}, // 完全に透明
+		AlwaysOnTop:      appCfg.AlwaysOnTop,
 		OnStartup:        app.startup,
 		Bind:             []interface{}{app},
+		Menu:             appMenu,
+		Assets:           assets,
 		Mac: &mac.Options{
+			TitleBar: &mac.TitleBar{
+				TitlebarAppearsTransparent: true,
+				HideTitle:                  true,
+				HideTitleBar:               true,
+			},
 			WebviewIsTransparent: true,
-			WindowIsTranslucent:  true,
+			WindowIsTranslucent:  false, // ここを false に戻してみる
 		},
 	}); err != nil {
 		log.Fatalf("wails run: %v", err)
-	}
-}
-
-func pipeline(
-	ctx context.Context,
-	events <-chan monitor.MonitorEvent,
-	speech *llm.SpeechGenerator,
-	wsServer *ws.Server,
-	cfg *config.Config,
-) {
-	for {
-		select {
-		case e := <-events:
-			reason := reasonFromEvent(e)
-			text := speech.Generate(e, cfg, reason)
-			wsServer.Broadcast(ws.Event{
-				State:  string(e.State),
-				Task:   string(e.Task),
-				Mood:   string(e.Mood),
-				Speech: text,
-			})
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-func reasonFromEvent(e monitor.MonitorEvent) llm.Reason {
-	switch e.State {
-	case monitor.StateSuccess:
-		return llm.ReasonSuccess
-	case monitor.StateFail:
-		return llm.ReasonFail
-	case monitor.StateThinking:
-		return llm.ReasonThinkingTick
-	default:
-		return llm.ReasonThinkingTick
 	}
 }

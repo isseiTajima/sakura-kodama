@@ -2,124 +2,200 @@ package monitor
 
 import (
 	"context"
+	"log"
 	"time"
 
+	"devcompanion/internal/agent"
+	"devcompanion/internal/behavior"
 	"devcompanion/internal/config"
+	"devcompanion/internal/context"
+	"devcompanion/internal/debug/recorder"
+	"devcompanion/internal/metrics"
+	"devcompanion/internal/pipeline"
+	"devcompanion/internal/plugin"
+	"devcompanion/internal/sensor"
+	"devcompanion/internal/session"
+	"devcompanion/internal/types"
 )
 
-const defaultSilenceThresholdDuration = 5 * time.Second
-
-// MonitorEvent はモニタリング結果を表す。
+// MonitorEvent はパイプラインの最終出力を表す。
 type MonitorEvent struct {
-	State StateType
-	Task  TaskType
-	Mood  MoodType
+	State    types.ContextState   `json:"state"`
+	Task     TaskType             `json:"task"`
+	Mood     MoodType             `json:"mood"`
+	Event    types.HighLevelEvent `json:"event"`
+	Behavior types.Behavior       `json:"behavior"`
+	Session  types.SessionState   `json:"session"`
+	Context  types.ContextInfo    `json:"context"`
+	Decision types.ContextDecision `json:"decision"`
+	Details  string               `json:"details"`
 }
 
-// Monitor はプロセス検知・タスク推論・State遷移を束ねる。
+// Monitor はパイプライン（Sensors -> Signals -> Context）を管理する。
 type Monitor struct {
-	detector *Detector
-	inferrer *TaskInferrer
-	events   chan MonitorEvent
-	cfg      *config.Config
+	cfg           *config.AppConfig
+	agentRegistry *agent.Registry
+	contextEngine *contextengine.Estimator
+	sensors       []sensor.Sensor
+	recorder      *recorder.Recorder
+	pluginRegistry *plugin.Registry
+	
+	behaviorInferrer *behavior.Inferrer
+	sessionTracker   *session.Tracker
+
+	aiSessionActive  bool
+	devSessionActive bool
+
+	signals chan types.Signal
+	events  chan MonitorEvent
 }
 
-// New は Monitor を作成する。watchDir はfsnotifyの監視対象ディレクトリ。
-func New(cfg *config.Config, watchDir string) (*Monitor, error) {
-	detector, err := NewDetector(watchDir)
+func New(cfg *config.AppConfig, watchDir string) (*Monitor, error) {
+	rec, err := recorder.New(true)
 	if err != nil {
-		return nil, err
+		rec, _ = recorder.New(false)
 	}
-	return &Monitor{
-		detector: detector,
-		inferrer: NewTaskInferrer(),
-		events:   make(chan MonitorEvent, 16),
-		cfg:      cfg,
-	}, nil
+
+	m := &Monitor{
+		cfg:              cfg,
+		agentRegistry:    agent.NewRegistry(),
+		contextEngine:    contextengine.NewEstimator(),
+		behaviorInferrer: behavior.NewInferrer(5 * time.Minute),
+		sessionTracker:   session.NewTracker(),
+		recorder:         rec,
+		pluginRegistry:   plugin.NewRegistry(),
+		signals:          make(chan types.Signal, 64),
+		events:           make(chan MonitorEvent, 16),
+	}
+
+	// センサーの登録
+	m.sensors = append(m.sensors, sensor.NewFSSensor(watchDir))
+	m.sensors = append(m.sensors, sensor.NewProcessSensor([]string{"claude", "cursor", "vscode", "code", "iterm"}, 2*time.Second))
+
+	if cfg != nil {
+		m.contextEngine.SetWeights(cfg.SignalWeights)
+	}
+
+	return m, nil
 }
 
-// Run はメインループを開始する（goroutine内で呼ぶ）。
 func (m *Monitor) Run(ctx context.Context) {
-	go m.detector.Run(ctx)
+	defer m.recorder.Close()
 
-	ticker := time.NewTicker(500 * time.Millisecond)
+	for _, s := range m.sensors {
+		go func(sn sensor.Sensor) {
+			_ = sn.Run(ctx, m.signals)
+		}(s)
+	}
+
+	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
-
-	currentState := StateIdle
-	currentTask := TaskPlan
-	processRunning := false
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-
-		case line := <-m.detector.Signals():
-			m.inferrer.AddLine(line)
-
-		case pe := <-m.detector.ProcessEvents():
-			prevState := currentState
-			input := buildTransitionInput(processRunning, pe, m.detector.SilenceDuration(), defaultSilenceThresholdDuration)
-			if pe.Type == ProcessStarted {
-				processRunning = true
-			} else {
-				processRunning = false
-			}
-			newState := Transition(currentState, input)
-			newTask := applySpecialTaskRule(prevState, newState, currentTask)
-			newMood := InferMood(newState, newTask)
-			if newState != currentState || newTask != currentTask {
-				m.events <- MonitorEvent{newState, newTask, newMood}
-				currentState = newState
-				currentTask = newTask
-			}
-
 		case <-ticker.C:
-			input := TransitionInput{
-				ProcessRunning:   processRunning,
-				SilenceDuration:  m.detector.SilenceDuration(),
-				SilenceThreshold: defaultSilenceThresholdDuration,
-			}
-			prevState := currentState
-			newState := Transition(currentState, input)
-			newTask := m.inferrer.Infer(m.detector.SilenceDuration())
-			newTask = applySpecialTaskRule(prevState, newState, newTask)
-			newMood := InferMood(newState, newTask)
-			if newState != currentState || newTask != currentTask {
-				m.events <- MonitorEvent{newState, newTask, newMood}
-				currentState = newState
-				currentTask = newTask
-			}
+			// 定期的な状態更新（ひとり言用）
+			pipeline.SafeExecute("HeartbeatLoop", func() {
+				now := time.Now()
+				// シグナルがない状態での現在の推定結果を取得
+				decision := m.contextEngine.LastDecision
+				if decision.State == "" {
+					decision.State = types.StateIdle
+				}
+				
+				currentBehavior := m.behaviorInferrer.Infer()
+				currentSession := m.sessionTracker.Update(currentBehavior, now)
+
+				m.events <- MonitorEvent{
+					State:    decision.State,
+					Behavior: currentBehavior,
+					Session:  currentSession,
+					Context: types.ContextInfo{
+						State:      decision.State,
+						Confidence: decision.Confidence,
+						LastSignal: now,
+					},
+					Decision: decision,
+				}
+			})
+
+		case sig := <-m.signals:
+			log.Printf("[DEBUG] Monitor received signal: %+v", sig)
+			pipeline.SafeExecute("MonitorLoop", func() {
+				now := sig.Timestamp
+				if now.IsZero() {
+					now = time.Now()
+				}
+
+				metrics.IncrementSignalsReceived()
+				m.recorder.Record(sig)
+				m.pluginRegistry.NotifySignal(sig)
+				
+				highLevelEvent := m.classifySignal(sig)
+
+				prevState := m.contextEngine.LastDecision.State
+				
+				// Context Engine で状態推定
+				decision := m.contextEngine.ProcessSignal(sig)
+				
+				if decision.State != prevState {
+					metrics.IncrementContextSwitch()
+				}
+
+				m.behaviorInferrer.AddSignal(sig)
+				currentBehavior := m.behaviorInferrer.Infer()
+				currentSession := m.sessionTracker.Update(currentBehavior, now)
+
+				m.events <- MonitorEvent{
+					State:    decision.State,
+					Event:    highLevelEvent,
+					Behavior: currentBehavior,
+					Session:  currentSession,
+					Context: types.ContextInfo{
+						State:      decision.State,
+						Confidence: decision.Confidence,
+						LastSignal: now,
+					},
+					Decision: decision,
+					Details:  sig.Value,
+				}
+			})
 		}
 	}
 }
 
-// Events はMonitorEventチャネルを返す。
 func (m *Monitor) Events() <-chan MonitorEvent {
 	return m.events
 }
 
-// applySpecialTaskRule は Fail→Editing 遷移時にTaskをFixFailingTestsに強制する純粋関数。
-func applySpecialTaskRule(prev, next StateType, task TaskType) TaskType {
-	if prev == StateFail && next == StateEditing {
-		return TaskFixFailingTests
+func (m *Monitor) InjectSignal(sig types.Signal) {
+	select {
+	case m.signals <- sig:
+	default:
 	}
-	return task
 }
 
-// buildTransitionInput は ProcessEvent からTransitionInputを構築する。
-func buildTransitionInput(wasRunning bool, pe ProcessEvent, silence, threshold time.Duration) TransitionInput {
-	if pe.Type == ProcessStarted {
-		return TransitionInput{
-			ProcessRunning:   true,
-			SilenceDuration:  silence,
-			SilenceThreshold: threshold,
+func (m *Monitor) classifySignal(sig types.Signal) types.HighLevelEvent {
+	switch sig.Type {
+	case types.SigProcessStarted:
+		if sig.Source == types.SourceAgent {
+			if !m.aiSessionActive {
+				m.aiSessionActive = true
+				return types.EventAISessionStarted
+			}
+			return types.EventAISessionActive
 		}
+	case types.SigFileModified, types.SigGitCommit:
+		if !m.devSessionActive {
+			m.devSessionActive = true
+			return types.EventDevSessionStarted
+		}
+		if sig.Source == types.SourceGit {
+			return types.EventGitActivity
+		}
+		return types.EventDevEditing
 	}
-	return TransitionInput{
-		ProcessRunning:   false,
-		ProcessExited:    true,
-		ExitCode:         pe.ExitCode,
-		SilenceThreshold: threshold,
-	}
+	return ""
 }

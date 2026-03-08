@@ -1,0 +1,29 @@
+{
+  "name": "devcompanion-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "diagnose": "npx tsx tests/e2e/diagnose.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "@sveltejs/vite-plugin-svelte": "^6.2.4",
+    "@typescript-eslint/parser": "^8.56.1",
+    "@typescript-eslint/types": "^8.56.1",
+    "jsdom": "^28.1.0",
+    "svelte": "^5.53.7",
+    "svelte-check": "^4.4.4",
+    "tslib": "^2.8.1",
+    "tsx": "^4.19.3",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
+  }
+}

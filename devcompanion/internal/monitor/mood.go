@@ -17,7 +17,7 @@ func InferMood(s StateType, t TaskType) MoodType {
 		return MoodHappy
 	case s == StateFail:
 		return MoodNervous
-	case s == StateRunning && (t == TaskDebug || t == TaskFixFailingTests):
+	case s == StateRunning && (t == TaskDebug || t == TaskFixFailingTests || t == TaskGenerateCode):
 		return MoodFocus
 	default:
 		return MoodCalm

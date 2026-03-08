@@ -236,6 +236,24 @@ func TestTransition_Priority_NoProcess_BeatsExitCode(t *testing.T) {
 	}
 }
 
+func TestTransition_NoProcess_NoExitFlag_IgnoresExitCode(t *testing.T) {
+	// Given: プロセス未検出だが exitCode が非ゼロに設定されている（初期起動直後）
+	input := TransitionInput{
+		ProcessRunning:   false,
+		ProcessExited:    false,
+		ExitCode:         42,
+		SilenceThreshold: defaultSilenceThreshold,
+	}
+
+	// When: 遷移判定
+	got := Transition(StateRunning, input)
+
+	// Then: ExitCode を無視して Idle を維持
+	if got != StateIdle {
+		t.Errorf("want %s when process not running and not exited, got %s", StateIdle, got)
+	}
+}
+
 // --- カスタム閾値のテスト ---
 
 func TestTransition_CustomThreshold_3s(t *testing.T) {

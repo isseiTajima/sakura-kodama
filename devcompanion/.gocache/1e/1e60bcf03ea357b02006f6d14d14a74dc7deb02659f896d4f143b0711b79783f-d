@@ -1,0 +1,15 @@
+./aicli.go
+./claude.go
+./fallback.go
+./ollama.go
+./router.go
+./speech.go
+./aicli_test.go
+./claude_429_test.go
+./claude_test.go
+./fallback_flag_test.go
+./fallback_test.go
+./ollama_test.go
+./router_integration_test.go
+./router_test.go
+./speech_test.go

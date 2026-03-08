@@ -22,7 +22,7 @@ func TestAddLine_GoTest_ScoresRunTests(t *testing.T) {
 	}
 }
 
-func TestAddLine_FAIL_ScoresRunTests(t *testing.T) {
+func TestAddLine_FAIL_ScoresFixFailing(t *testing.T) {
 	// Given: "FAIL" を含む行をバッファに追加
 	ti := NewTaskInferrer()
 	ti.AddLine("FAIL\texample.com/mymodule\t0.123s")
@@ -30,9 +30,9 @@ func TestAddLine_FAIL_ScoresRunTests(t *testing.T) {
 	// When: 無音なしで推論
 	task := ti.Infer(0)
 
-	// Then: RunTests が選ばれる（スコア +2）
-	if task != TaskRunTests {
-		t.Errorf("want %s, got %s", TaskRunTests, task)
+	// Then: FixFailingTests が選ばれる
+	if task != TaskFixFailingTests {
+		t.Errorf("want %s, got %s", TaskFixFailingTests, task)
 	}
 }
 
@@ -167,7 +167,7 @@ func TestInfer_NoSignals_NoSilence_DefaultsPlan(t *testing.T) {
 func TestInfer_MultiSignal_MaxScoreWins(t *testing.T) {
 	// Given: "panic"（Debug +4）と "go test"（RunTests +3）を両方追加
 	ti := NewTaskInferrer()
-	ti.AddLine("go test ./...")   // RunTests +3
+	ti.AddLine("go test ./...")  // RunTests +3
 	ti.AddLine("panic: runtime") // Debug +4
 
 	// When: 無音なしで推論
@@ -285,6 +285,51 @@ func TestInfer_MultipleMatchesInBuffer_AccumulateScore(t *testing.T) {
 	// Then: RunTests が勝つ（累積 9 > 4）
 	if task != TaskRunTests {
 		t.Errorf("want %s (accumulated score 9 > 4), got %s", TaskRunTests, task)
+	}
+}
+
+func TestInfer_ExitCodeLine_ScoresDebug(t *testing.T) {
+	// Given: 非ゼロ exit code を含むログ行
+	ti := NewTaskInferrer()
+	ti.AddLine("process exited with code 2")
+
+	// When: 推論
+	task := ti.Infer(0)
+
+	// Then: Debug が選ばれる（exit code != 0 のバイアス）
+	if task != TaskDebug {
+		t.Errorf("want %s for exit code line, got %s", TaskDebug, task)
+	}
+}
+
+func TestInfer_FailureSignal_BiasesFixFailingTests(t *testing.T) {
+	// Given: FAIL ログが最新バッファに入っている
+	ti := NewTaskInferrer()
+	ti.AddLine("FAIL\tdevcompanion/internal/monitor 0.34s")
+
+	// When: 推論
+	task := ti.Infer(0)
+
+	// Then: FixFailingTests を優先
+	if task != TaskFixFailingTests {
+		t.Errorf("want %s when FAIL is observed, got %s", TaskFixFailingTests, task)
+	}
+}
+
+func TestInfer_RecentSignalsOutweighOldOnes(t *testing.T) {
+	// Given: 古い panic シグナル多数と直近の go test シグナル
+	ti := NewTaskInferrer()
+	for i := 0; i < 10; i++ {
+		ti.AddLine("panic: runtime error")
+	}
+	ti.AddLine("go test ./...")
+
+	// When: 推論
+	task := ti.Infer(0)
+
+	// Then: 直近シグナル（go test）が優先される
+	if task != TaskRunTests {
+		t.Errorf("want %s favored by recency decay, got %s", TaskRunTests, task)
 	}
 }
 
