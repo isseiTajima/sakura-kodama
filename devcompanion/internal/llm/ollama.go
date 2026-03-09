@@ -3,8 +3,10 @@ package llm
 import (
 	"bytes"
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"text/template"
@@ -13,31 +15,31 @@ import (
 
 const (
 	defaultOllamaEndpoint = "http://localhost:11434/api/generate"
-	ollamaTimeout         = 15 * time.Second
+	ollamaTimeout         = 30 * time.Second
 	retryAttempts         = 3
 )
 
-var promptTemplate = template.Must(template.New("prompt").Parse(
-	`あなたは{{.Name}}という名前のデスクトップキャラクター、話しかけている相手は「{{.UserName}}」です。
-あなたの役割は、{{.UserName}}の作業を隣で見守り、応援することです。
+//go:embed prompts/*.tmpl
+var promptFS embed.FS
 
-[現在の{{.UserName}}の状況]
-時間: {{.TimeOfDay}} (深夜)
-作業モード: {{.SessionMode}} (集中度: {{.FocusLevel}})
-最近の具体的な行動: {{.Behavior}}
-進捗（信頼）: {{.Trust}}/100
-あなたとの親密度: {{.RelationshipLvl}}/100
+var promptTemplates = make(map[string]*template.Template)
 
-[指示]
-- 40文字以内で、今の{{.UserName}}の心に寄り添う一言を。
-- あなた自身の感想ではなく、あくまで「{{.UserName}}の状態」を観察して声をかけてください。
-- {{if eq .SessionMode "deep_focus"}}{{.UserName}}は今、ゾーンに入っています。声をかけるのは控えめに、邪魔にならない短い言葉で。{{end}}
-- {{if eq .SessionMode "struggling"}}{{.UserName}}は苦戦しているようです。そっと寄り添う言葉を。{{end}}
-- 定型的な挨拶（「こんばんは」等）は禁止です。
-- 親密度が高い場合は、幼馴染のような少し崩した口調で。
-- 特殊記号やタグは出力せず、セリフのみ。`,
-))
-
+func init() {
+	langs := []string{"ja", "en"}
+	for _, lang := range langs {
+		data, err := promptFS.ReadFile(fmt.Sprintf("prompts/%s.tmpl", lang))
+		if err != nil {
+			log.Printf("[WARN] Failed to load prompt template for %s: %v", lang, err)
+			continue
+		}
+		tmpl, err := template.New(lang).Parse(string(data))
+		if err != nil {
+			log.Printf("[WARN] Failed to parse prompt template for %s: %v", lang, err)
+			continue
+		}
+		promptTemplates[lang] = tmpl
+	}
+}
 
 // OllamaInput はLLMへの入力パラメータ。
 type OllamaInput struct {
@@ -59,6 +61,7 @@ type OllamaInput struct {
 	CommitFrequency string
 	BuildFailRate   string
 	TimeOfDay       string
+	Language        string // ja, en
 }
 
 // OllamaClient はOllama APIのクライアント。
@@ -82,6 +85,7 @@ func NewOllamaClient(endpoint, model string) *OllamaClient {
 
 // Generate はOllama APIへリクエストし、生成されたテキストを返す。
 func (c *OllamaClient) Generate(ctx context.Context, in OllamaInput) (string, error) {
+	log.Printf("[DEBUG] Ollama requesting model: '%s' at %s", c.model, c.endpoint)
 	prompt, err := renderPrompt(in)
 	if err != nil {
 		return "", fmt.Errorf("prompt render: %w", err)
@@ -139,9 +143,26 @@ func (c *OllamaClient) Generate(ctx context.Context, in OllamaInput) (string, er
 	return "", lastErr
 }
 
+func (c *OllamaClient) IsAvailable() bool {
+	return c.endpoint != ""
+}
+
 func renderPrompt(in OllamaInput) (string, error) {
+	lang := in.Language
+	if lang == "" {
+		lang = "ja"
+	}
+	tmpl, ok := promptTemplates[lang]
+	if !ok {
+		// Fallback to ja
+		tmpl = promptTemplates["ja"]
+	}
+	if tmpl == nil {
+		return "", fmt.Errorf("no prompt template available for language: %s", lang)
+	}
+
 	var buf bytes.Buffer
-	if err := promptTemplate.Execute(&buf, in); err != nil {
+	if err := tmpl.Execute(&buf, in); err != nil {
 		return "", err
 	}
 	return buf.String(), nil

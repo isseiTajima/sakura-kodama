@@ -1,0 +1,8 @@
+./build.go
+./dev.go
+./doctor.go
+./generate.go
+./init.go
+./main.go
+./show.go
+./update.go

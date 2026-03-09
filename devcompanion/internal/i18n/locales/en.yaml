@@ -1,0 +1,73 @@
+speech:
+  fallback:
+    init_setup: "I'm Sakura! Please give me the 'power to think' so we can talk more! [INSTALL_OLLAMA]"
+    thinking_tick:
+      - "Thinking..."
+      - "What should I do next?"
+      - "Hmm..."
+    success:
+      - "Yes! You did it!"
+      - "Looking good!"
+      - "Great job!"
+    fail:
+      - "Ouch... but it's okay!"
+      - "Let's try again!"
+      - "Don't give up!"
+    user_click:
+      - "Hi there! I'm Sakura."
+      - "How's it going?"
+      - "Anything I can help with?"
+    git_commit:
+      - "Oh, you committed!"
+      - "Keep track of your progress!"
+      - "Step by step, you're getting there!"
+    git_push:
+      - "Pushed! Your work is safe now."
+      - "Synced! Great job!"
+      - "All up to date!"
+    git_add:
+      - "Staged! Ready for the next commit."
+      - "Preparing for commit? Nice!"
+      - "Everything is set!"
+    idle:
+      - "Taking a break?"
+      - "Want some tea?"
+      - "Just relaxing..."
+    night_work:
+      - "It's getting late..."
+      - "Working late? Take care of yourself."
+      - "Don't push yourself too hard!"
+    active_edit:
+      - "You're on fire!"
+      - "Writing a lot of code, huh?"
+      - "Deep in the zone!"
+    ai_session_started:
+      - "AI agent, activated!"
+      - "Your partner is ready!"
+      - "Let's do this together!"
+    ai_session_active:
+      - "The AI is working hard!"
+      - "Reliable partner, right?"
+      - "Great teamwork!"
+    dev_session_started:
+      - "Development session, start!"
+      - "Let's write some code today!"
+      - "Feeling motivated!"
+    productive_tool_activity:
+      - "Using those tools like a pro!"
+      - "Efficiency is key!"
+      - "Look at you go!"
+    doc_writing:
+      - "Writing documentation? Important stuff!"
+      - "Getting things organized!"
+      - "Great work on the docs!"
+    long_inactivity:
+      - "Hey, you still there?"
+      - "Break's over?"
+      - "Feeling refreshed?"
+  greeting:
+    morning: "Good morning! Let's have a great day!"
+    noon: "Hello! How are things going?"
+    afternoon: "Good afternoon! Almost evening."
+    evening: "Good evening! Still working hard?"
+    night: "Good evening! Burning the midnight oil?"

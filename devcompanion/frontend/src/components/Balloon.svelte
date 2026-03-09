@@ -6,41 +6,42 @@
     message = { id: 0, text: '' }, 
     scale = 1, 
     usingFallback = false,
-    visible = $bindable(false)
+    visible = $bindable(false),
+    position = 'top-right'
   } = $props()
 
   let timer: ReturnType<typeof setTimeout> | null = null
-  const maxLength = 80 
+  const maxLength = 200
 
   let showInstallButton = $state(false)
   let displayText = $state('')
 
   $effect(() => {
-    const mid = message.id
     const text = message.text
 
-    if (showInstallButton && text && !text.includes('[INSTALL_OLLAMA]')) {
+    if (!text) {
+      visible = false
+      return
+    }
+
+    if (showInstallButton && !text.includes('[INSTALL_OLLAMA]')) {
       return
     }
 
     clearTimeout(timer ?? undefined)
     
-    if (text) {
-      if (text.includes('[INSTALL_OLLAMA]')) {
-        showInstallButton = true
-        displayText = text.replace('[INSTALL_OLLAMA]', '')
-      } else {
-        showInstallButton = false
-        displayText = text
-      }
-
-      visible = true
-      if (!showInstallButton) {
-        const duration = Math.min(12000, 6000 + (displayText.length * 150))
-        timer = setTimeout(() => { visible = false }, duration)
-      }
+    if (text.includes('[INSTALL_OLLAMA]')) {
+      showInstallButton = true
+      displayText = text.replace('[INSTALL_OLLAMA]', '')
     } else {
-      visible = false
+      showInstallButton = false
+      displayText = text
+    }
+
+    visible = true
+    if (!showInstallButton) {
+      const duration = Math.min(15000, 8000 + (displayText.length * 150))
+      timer = setTimeout(() => { visible = false }, duration)
     }
   })
 
@@ -62,12 +63,13 @@
 </script>
 
 {#if visible && trimmed}
-  <div class="balloon" class:fallback={usingFallback} style="
-    bottom: {Math.round(60 * scale)}px;
-    left: {Math.round(105 * scale)}px; /* キャラの右肩付近に寄せる */
-    transform: scale({scale});
-    transform-origin: bottom left;
-  ">
+  <div class="balloon" 
+    class:fallback={usingFallback} 
+    style="
+      transform: scale({scale});
+      transform-origin: right center;
+    "
+  >
     <div class="content">
       <p class="balloon-text">{#if usingFallback}<span class="fallback-label">🔄</span>&nbsp;{/if}{trimmed}</p>
       
@@ -82,27 +84,29 @@
 
 <style>
   .balloon {
-    position: absolute;
-    background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    border: 1.5px solid rgba(0, 0, 0, 0.15);
-    border-radius: 12px;
-    padding: 10px 12px;
-    width: 150px; /* ウィンドウ端に収まるよう幅を少し制限 */
-    min-height: 50px;
+    position: relative;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1.2px solid rgba(0, 0, 0, 0.1);
+    border-radius: 20px;
+    padding: 12px 16px;
+    width: auto;
+    max-width: 250px;
+    min-height: 40px;
     height: auto;
-    word-break: break-all;
+    word-break: normal;
+    overflow-wrap: break-word;
     font-size: 11px;
     line-height: 1.4;
-    color: #000;
+    color: #333;
     z-index: 10;
     display: flex;
     align-items: center;
-    justify-content: center;
-    text-align: center;
+    justify-content: flex-start;
+    text-align: left; /* 左揃え */
     box-sizing: border-box;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
   }
 
   .content {
@@ -122,30 +126,29 @@
     font-weight: bold;
     cursor: pointer;
     transition: background 0.2s;
+    align-self: flex-start;
   }
 
-  /* 吹き出しのしっぽ（外枠） - 左側に配置 */
+  /* しっぽスタイル: 右下からキャラに向かって出る */
+  .balloon::before, .balloon::after {
+    content: '';
+    position: absolute;
+    bottom: 8px;
+    right: -6px;
+    transform: rotate(35deg);
+  }
+
   .balloon::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    right: 100%;
-    transform: translateY(-50%);
-    border-top: 8px solid transparent;
-    border-bottom: 8px solid transparent;
-    border-right: 12px solid rgba(0, 0, 0, 0.15);
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-left: 12px solid rgba(0, 0, 0, 0.1);
   }
 
-  /* 吹き出しのしっぽ（中身） - 左側に配置 */
   .balloon::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    right: calc(100% - 1.5px);
-    transform: translateY(-50%);
-    border-top: 7px solid transparent;
-    border-bottom: 7px solid transparent;
-    border-right: 11px solid rgba(255, 255, 255, 0.9);
+    right: -5px;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 11px solid rgba(255, 255, 255, 0.95);
   }
 
   p {
@@ -154,8 +157,8 @@
   }
 
   .balloon.fallback {
-    background: rgba(255, 193, 7, 0.15);
-    border: 1.5px solid rgba(255, 193, 7, 0.4);
+    background: rgba(255, 248, 225, 0.95);
+    border: 1.2px solid rgba(255, 193, 7, 0.3);
   }
 
   .fallback-label {

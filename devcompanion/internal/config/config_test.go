@@ -29,17 +29,19 @@ func TestLoadConfig_LoadsYaml(t *testing.T) {
 	os.Setenv("HOME", tmpHome)
 	defer os.Setenv("HOME", origHome)
 
-	dir := filepath.Join(tmpHome, ".config", "devcompanion")
+	path, _ := DefaultConfigPath()
+	dir := filepath.Dir(path)
 	_ = os.MkdirAll(dir, 0755)
-	
+
 	yamlData := `
 idle_timeout: 123
 persona_style: energetic
 name: CustomName
 `
-	_ = os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(yamlData), 0644)
+	_ = os.WriteFile(path, []byte(yamlData), 0644)
 
 	cfg, err := LoadConfig()
+
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}

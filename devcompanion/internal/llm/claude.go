@@ -95,3 +95,7 @@ func (c *AnthropicClient) Generate(ctx context.Context, in OllamaInput) (string,
 	}
 	return strings.TrimSpace(result.Content[0].Text), nil
 }
+
+func (c *AnthropicClient) IsAvailable() bool {
+	return c.apiKey != ""
+}

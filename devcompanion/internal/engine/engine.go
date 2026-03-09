@@ -49,6 +49,9 @@ func New(m *monitor.Monitor, ctxEng *contextengine.Estimator, p *persona.Persona
 		observer: obs,
 		notifier: n,
 		cfg:      c,
+		lastEvent: monitor.MonitorEvent{
+			State: types.StateIdle,
+		},
 	}
 }
 
@@ -127,16 +130,18 @@ func (e *Engine) Run(ctx context.Context) {
 
 // StartupGreeting は起動時の挨拶を行う。
 func (e *Engine) StartupGreeting(ctx context.Context) {
-	time.Sleep(5 * time.Second)
-	// Ollamaの準備を待つ（ベストエフォート）
-	deadline := time.Now().Add(30 * time.Second)
+	log.Println("[ENGINE] StartupGreeting process started")
+	time.Sleep(2 * time.Second)
+	// Ollamaの準備を待つ（短縮）
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		resp, err := http.Get("http://localhost:11434/api/tags")
 		if err == nil {
 			resp.Body.Close()
+			log.Println("[ENGINE] Ollama detected during startup")
 			break
 		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(1 * time.Second)
 		if ctx.Err() != nil {
 			return
 		}
@@ -147,7 +152,11 @@ func (e *Engine) StartupGreeting(ctx context.Context) {
 	if e.cfg.SetupCompleted {
 		reason = llm.ReasonGreeting
 	}
+	
+	log.Printf("[ENGINE] Requesting greeting speech for reason: %s", reason)
 	text := e.speech.Generate(e.lastEvent, e.cfg, reason, prof)
+	log.Printf("[ENGINE] Greeting result: %s", text)
+	
 	e.AppendSpeechHistory(string(reason), text)
 	
 	e.notifier.Notify(types.Event{

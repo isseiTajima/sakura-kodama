@@ -11,6 +11,7 @@ export namespace config {
 	    model: string;
 	    ollama_endpoint: string;
 	    anthropic_api_key: string;
+	    gemini_api_key: string;
 	    llm_backend: string;
 	    log_paths: string[];
 	    auto_start: boolean;
@@ -19,6 +20,8 @@ export namespace config {
 	    click_through: boolean;
 	    setup_completed: boolean;
 	    speech_frequency: number;
+	    window_position: string;
+	    language: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -36,6 +39,7 @@ export namespace config {
 	        this.model = source["model"];
 	        this.ollama_endpoint = source["ollama_endpoint"];
 	        this.anthropic_api_key = source["anthropic_api_key"];
+	        this.gemini_api_key = source["gemini_api_key"];
 	        this.llm_backend = source["llm_backend"];
 	        this.log_paths = source["log_paths"];
 	        this.auto_start = source["auto_start"];
@@ -44,6 +48,8 @@ export namespace config {
 	        this.click_through = source["click_through"];
 	        this.setup_completed = source["setup_completed"];
 	        this.speech_frequency = source["speech_frequency"];
+	        this.window_position = source["window_position"];
+	        this.language = source["language"];
 	    }
 	}
 

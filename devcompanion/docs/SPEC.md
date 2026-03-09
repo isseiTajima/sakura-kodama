@@ -1,101 +1,60 @@
-# DevCompanion 技術仕様書 (v2.1)
+# DevCompanion 技術仕様書
 
-## 1. アーキテクチャ概要
+## プロジェクトの目的
+DevCompanion は、AIエージェント（Claude Code 等）を活用する開発者に寄り添う、キャラクターベースのデスクトップアシスタントである。開発者のワークフローや感情の状態をモニタリングし、文脈に応じたフィードバックと感情的サポートを提供することで、孤独になりがちな開発体験を「共同作業」へと変える。
 
-DevCompanionは、OSや開発環境からの微細な活動を観測し、開発者の状況を推定して最適なフィードバックを行うイベントパイプライン構造を採用しています。
+## コア・コンセプト
+「3層モニタリングモデル」による状況把握：
+1.  **AIエージェントの活動**: ログや設定ディレクトリの直接監視。
+2.  **開発アクティビティ**: ソースコード、Git操作、エディタのイベント監視。
+3.  **システムシグナル**: OSレベルの信号や生産性ツールの使用状況。
 
-### イベントパイプライン
-1. **Sensors**: OSやファイルシステムの事実のみを観測。
-2. **Signals**: 意味を持たない低レベルイベント。
-3. **Context Engine**: シグナルを組み合わせ、確率ベースで開発者の状態を推定。
-4. **Persona Engine**: 状態とキャラクター設定を組み合わせ、セリフのトーンを決定。
-5. **Message Output**: LLMを介して最終的なセリフを生成。
+## システムアーキテクチャ
 
----
+### 主要コンポーネント
+- **Wails シェル (Go/Svelte)**: 透明ウィンドウによる GUI と OS 統合を提供。
+- **エンジン層 (`internal/engine`)**:
+    - センサー処理、状況推定、人格（ペルソナ）生成を統合する中央パイプライン。
+    - `Notifier` インターフェースにより、配信手段（Wails/WebSocket）を抽象化。
+- **トランスポート層 (`internal/transport`)**:
+    - `WailsNotifier`: Wails のフロントエンドへのイベント送信。
+    - `WebSocketNotifier`: 独立した WebSocket サーバー (:34567)。
+- **ペルソナエンジン (`internal/persona`)**: キャラクターの性格、口調、プロンプト修飾子を定義。
+- **LLM 連携層 (`internal/llm`)**:
+    - `SpeechGenerator`: 文脈情報の収集とテキスト生成の調整。
+    - `LLMRouter`: 設定済みのバックエンド（Ollama, Claude, Gemini）を優先度順に試行。
 
-## 2. 構成レイヤー
+## グローバル対応 (i18n) モデル
 
-### Layer 1: Sensors (観測)
-- **ProcessSensor**: 実行中のプロセス（AI Agent, IDE等）を監視。
-- **FSSensor**: ソースコードや設定ファイルの変更を監視。
-- **GitSensor**: コミットやブランチ操作を監視。
-- **IdleSensor**: キーボード/マウス入力の不在を監視。
+### ローカライズ範囲
+初期実装として **日本語 (ja)** と **英語 (en)** をサポートする。
 
-### Layer 2: Signals (イベント)
-Sensorsから生成される最小単位のイベント。
-- `process_started`, `file_modified`, `git_commit` 等。
+### ローカライズ戦略
+1.  **静的ローカライズ (i18n パッケージ)**:
+    - `internal/i18n/locales/` 内の YAML ファイルで UI 文字列と LLM 失敗時の固定セリフ (Fallback) を管理。
+    - `i18n.T(lang, "key")` 形式で、設定された言語に応じた文字列を動的に取得。
+2.  **LLM 駆動型ローカライズ**:
+    - 言語ごとに最適化されたプロンプトテンプレート (`internal/llm/prompts/*.tmpl`) を使用。
+    - LLM に対し、ターゲット言語での応答と、その文化圏で自然なキャラクター性（例：EN版では「後輩」ではなく「Enthusiastic Peer」）を指示。
 
-### Layer 3: Context Engine (状況推定)
-複数のSignalsの時間密度と重み付けにより、以下の状態を確率的に判定。
-- `CODING`: 通常のコーディング中。
-- `AI_PAIR_PROGRAMMING`: AIエージェントと協力して開発中。
-- `DEEP_WORK`: 高い集中状態で作業中。
-- `STUCK`: エラーが頻発し、行き詰まっている状態。
+## キャラクター・インタラクション
 
-### Layer 4: Persona Engine (人格)
-- **Character Core**: 「応援してくれる後輩（サクラ）」としての基本人格。
-- **Persona Style**: `soft` (優しく), `energetic` (元気に), `strict` (厳しく) の3つの表現スタイル。
+### 視覚状態のマッピング
+アセット構成に合わせ、論理状態を以下の3つの視覚状態に集約する：
+- **喜び (Happy)**: `Success` 状態。
+- **悲しみ (Sad)**: `Fail` 状態（※アセット追加予定）。
+- **待機 (Idle/Blink)**: 上記以外（`Idle`, `Running`, `Thinking`, `Editing`）のすべての状態。
 
----
+### 動作仕様
+- **配置**: 画面の右側（右上または右下）に限定。
+- **ビジュアル**: 画面中央（コード）を向くよう、配置に応じて左右を自動反転。
+- **マウス透過**: 設定画面表示時を除き、常にマウスイベントを透過。
 
-## 3. デバッグと観測性 (Observability)
+## データ保存
+XDG Base Directory 規格に準拠：
+- **場所**: `~/.config/devcompanion/`
+- **ファイル**: `config.yaml`, `dev_profile.json`, `SPEECH_HISTORY.txt`
 
-開発者の行動を正確にシミュレーションし、Context Engine の精度を向上させるための機構を備えています。
-
-### 3.1 Signal Recorder
-`monitor` 層で受信した全シグナルを JSONL 形式で永続化します。
-- **保存場所**: `~/.devcompanion/signals/signals_YYYYMMDD_HHMMSS.jsonl`
-- **目的**: 本番環境で発生した複雑なイベントシーケンスの記録。
-
-### 3.2 Signal Replay Engine
-記録されたシグナルログを読み込み、パイプラインに再注入します。
-- **再生モード**: 
-  - `RealTime`: 元のイベント間隔を再現。
-  - `Fast`: ウェイトなしで即座に全イベントを処理（ユニットテスト用）。
-
-### 3.3 Context Viewer
-リプレイ中の内部状態（Confidence, State遷移, Persona Style）をリアルタイムに可視化する CLI ツール。
-- **実行**: `go run cmd/contextviewer/main.go -f <log_path>`
-
----
-
-## 4. テスト戦略 (Testing Strategy)
-
-### 4.1 決定論的テスト (Deterministic Testing)
-LLM のセリフ生成（Fallback モード）にシード固定オプションを導入し、ランダム性に依存しない期待値検証を可能にしています。
-
-### 4.2 長時間安定性テスト (Stability Test)
-1万件以上のシグナルを高速リプレイし、以下の項目を自動検証します。
-- goroutine のリークがないこと。
-- メモリ消費が一定範囲内に収まること。
-- パイプライン内で panic が発生しないこと。
-
----
-
-## 5. ディレクトリ構造
-
-```text
-cmd/
-└── contextviewer/   # 状態遷移可視化ツール
-internal/
-├── agent/           # Agent Adapter
-├── behavior/        # (Legacy) 行動推論
-├── config/          # 設定管理
-├── context/         # Context Engine (状況推定)
-├── debug/           # デバッグ機構
-│   ├── recorder/    # シグナル記録
-│   └── replay/      # シグナル再生
-├── llm/             # 生成AI / セリフ生成
-├── monitor/         # パイプライン・オーケストレーター
-├── sensor/          # Sensors (観測)
-├── session/         # (Legacy) セッション管理
-├── types/           # アーキテクチャ共有型
-└── ws/              # フロントエンド通信
-docs/
-└── spec.md          # 本仕様書
-```
-
----
-
-## 6. 拡張性
-...（以下、既存の拡張性セクション）
+## 拡張ポイント
+- **新言語の追加**: `internal/i18n/locales/` に YAML を追加。
+- **新ペルソナ**: プロンプトテンプレートの差し替えによる性格変更。

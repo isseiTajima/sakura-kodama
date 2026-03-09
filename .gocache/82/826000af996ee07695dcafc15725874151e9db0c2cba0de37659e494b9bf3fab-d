@@ -1,0 +1,4 @@
+./dev.go
+./dev_other.go
+./stdout_scanner.go
+./watcher.go

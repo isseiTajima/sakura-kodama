@@ -41,6 +41,14 @@
     </label>
 
     <label>
+      言語 (Language)
+      <select bind:value={cfg.language}>
+        <option value="ja">日本語</option>
+        <option value="en">English</option>
+      </select>
+    </label>
+
+    <label>
       お話の頻度
       <select bind:value={cfg.speech_frequency}>
         <option value={1}>控えめ</option>
@@ -78,7 +86,22 @@
       </label>
     {/if}
 
+    {#if cfg.llm_backend === 'router'}
+      <label>
+        Gemini API Key
+        <input type="password" bind:value={cfg.gemini_api_key} placeholder="AIza..." />
+      </label>
+    {/if}
+
     <div class="section-title">表示設定</div>
+
+    <label>
+      表示位置
+      <select bind:value={cfg.window_position}>
+        <option value="top-right">右上</option>
+        <option value="bottom-right">右下</option>
+      </select>
+    </label>
 
     <div class="checkbox-group">
       <label>
@@ -88,10 +111,6 @@
       <label>
         <input type="checkbox" bind:checked={cfg.always_on_top} />
         最前面
-      </label>
-      <label title="ONにするとキャラクターを突き抜けて後ろをクリックできます">
-        <input type="checkbox" bind:checked={cfg.click_through} />
-        マウス透過
       </label>
       <label>
         <input type="checkbox" bind:checked={cfg.mute} />

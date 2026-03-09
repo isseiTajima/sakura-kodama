@@ -82,6 +82,16 @@ func New(cfg *config.AppConfig, watchDir string) (*Monitor, error) {
 func (m *Monitor) Run(ctx context.Context) {
 	defer m.recorder.Close()
 
+	// 起動時の初期シグナルを注入
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		m.InjectSignal(types.Signal{
+			Type:      types.SigIdleStart,
+			Source:    types.SourceSystem,
+			Timestamp: time.Now(),
+		})
+	}()
+
 	for _, s := range m.sensors {
 		go func(sn sensor.Sensor) {
 			_ = sn.Run(ctx, m.signals)

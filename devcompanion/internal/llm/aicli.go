@@ -67,3 +67,13 @@ func (c *AICLIClient) Generate(ctx context.Context, in OllamaInput) (string, err
 
 	return result, nil
 }
+
+func (c *AICLIClient) IsAvailable() bool {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	aiPath := filepath.Join(homeDir, ".bin", "ai")
+	_, err = os.Stat(aiPath)
+	return err == nil
+}

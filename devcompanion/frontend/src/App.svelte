@@ -24,17 +24,18 @@
   let showSettings = $state(false)
   let showOnboarding = $state(false)
   let isHoveringSettings = $state(false)
+  let socket: WebSocket | null = null
+  let reconnectDelay = 1000
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 
   let cfg: AppConfig = $state({ ...defaultConfig })
 
+  // OSレベルのクリック透過制御
   $effect(() => {
-    const shouldCaptureMouse = showSettings || showOnboarding
-    if (shouldCaptureMouse) {
-      SetClickThrough(false)
-    } else {
-      SetClickThrough(true)
-    }
+    const isModalOpen = showSettings || showOnboarding || isHoveringSettings
+    const ghostMode = !isModalOpen
+    SetClickThrough(ghostMode)
+    document.body.dataset.ghostMode = String(ghostMode)
   })
 
   const refreshConfig = async () => {
@@ -57,21 +58,81 @@
     if (e.speech) {
       speechMessage = { id: ++speechSeq, text: e.speech }
       usingFallback = e.using_fallback
+      if (e.profile) {
+        cfg.name = e.profile.name
+        cfg.tone = e.profile.tone
+      }
     }
+  }
+
+  function connectWebSocket() {
+    socket = new WebSocket('ws://localhost:34567/')
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        updateUI(data)
+      } catch (err) {
+        console.error('Failed to parse WS message', err)
+      }
+    }
+    socket.onopen = () => {
+      reconnectDelay = 1000
+      heartbeatTimer = setInterval(() => {
+        if (socket?.readyState === WebSocket.OPEN) {
+          socket.send('ping')
+        }
+      }, 30000)
+    }
+    socket.onclose = scheduleReconnect
+    socket.onerror = scheduleReconnect
+  }
+
+  function scheduleReconnect() {
+    cleanupSocket()
+    setTimeout(() => {
+      reconnectDelay = Math.min(reconnectDelay * 1.5, 8000)
+      connectWebSocket()
+    }, reconnectDelay)
+  }
+
+  function cleanupSocket() {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer)
+      heartbeatTimer = null
+    }
+    if (socket) {
+      socket.onclose = null
+      socket.onerror = null
+      socket.close()
+      socket = null
+    }
+  }
+
+  const handleCharaClick = () => {
+    if (showOnboarding) return
+    onCharaClick()
   }
 
   onMount(async () => {
     await refreshConfig()
+
     if ((window as any).runtime) {
       const r = (window as any).runtime
-      r.EventsOn('monitor_event', updateUI)
-      r.EventsOn('observation_event', updateUI)
-      r.EventsOn('greeting_event', updateUI)
-      r.EventsOn('click_event', updateUI)
+      const eventHandler = (payload: any) => {
+        updateUI(payload)
+      }
+      r.EventsOn('monitor_event', eventHandler)
+      r.EventsOn('observation_event', eventHandler)
+      r.EventsOn('greeting_event', eventHandler)
+      r.EventsOn('click_event', eventHandler)
+    } else {
+      connectWebSocket()
     }
+
     onOpenSettings(() => {
       showSettings = true
     })
+
     const status = await DetectSetupStatus()
     if (status.is_first_run) {
       showOnboarding = true
@@ -80,23 +141,28 @@
   })
 
   onDestroy(() => {
-    if (heartbeatTimer) clearInterval(heartbeatTimer)
+    cleanupSocket()
   })
+
+  // 右側に固定するためのロジック
+  const isTopSide = $derived(cfg.window_position?.startsWith('top'))
 </script>
 
-<main class:interactive={showSettings || showOnboarding}>
-  <div class="chara-container">
-    <!-- キャラクターを右から200pxの位置に配置 -->
-    <div class="chara-anchor">
+<main>
+  <!-- 右側にキャラを固定し、左向きに反転。吹き出しはその左に密着。 -->
+  <div class="chara-container" class:pos-top={isTopSide} class:pos-bottom={!isTopSide}>
+    <div class="balloon-positioner">
+      <Balloon bind:visible={isTalking} message={speechMessage} scale={cfg.scale} {usingFallback} position={cfg.window_position} />
+    </div>
+    
+    <div class="chara-flip-wrapper" style="pointer-events: {(showSettings || showOnboarding) ? 'auto' : 'none'};">
       <Chara 
         status={appStatus} 
         mood={appMood} 
         scale={cfg.scale} 
-        clickThrough={true}
         isTalking={isTalking}
+        onClick={handleCharaClick}
       />
-      <!-- メッセージをキャラの右（右端付近）に配置 -->
-      <Balloon bind:visible={isTalking} message={speechMessage} scale={cfg.scale} {usingFallback} />
     </div>
   </div>
 
@@ -109,8 +175,10 @@
       />
     </div>
   {:else if showSettings}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="modal-backdrop settings-backdrop" onclick={(e) => { if (e.target === e.currentTarget) closeSettings() }}>
-      <div class="settings-content-wrapper" onclick={(e) => e.stopPropagation()}>
+      <div class="settings-content-wrapper" onclick={(e) => e.stopPropagation()} onmousedown={(e) => e.stopPropagation()}>
         <Settings onClose={closeSettings} on:saved={refreshConfig} />
       </div>
     </div>
@@ -125,47 +193,49 @@
     height: 100%;
     background: transparent !important;
     overflow: hidden;
-    pointer-events: none !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    pointer-events: none;
   }
 
   main {
     width: 100vw;
     height: 100vh;
+    position: relative;
     background: transparent !important;
-    pointer-events: none !important;
-  }
-
-  main.interactive {
-    pointer-events: auto !important;
-  }
-  main.interactive :global(*) {
-    pointer-events: auto !important;
+    pointer-events: none;
   }
 
   .chara-container {
     position: absolute;
-    bottom: 0; 
-    right: 0;   
+    display: flex;
+    pointer-events: none;
     width: 100%;
     height: 100%;
+    box-sizing: border-box;
+    padding: 0;
+    justify-content: flex-end; /* 右端に寄せる */
+    flex-direction: row; /* [Balloon][Chara] の順 */
+  }
+
+  .pos-top { align-items: flex-start; }
+  .pos-bottom { align-items: flex-end; }
+
+  .chara-flip-wrapper {
     display: flex;
-    align-items: flex-end;
-    justify-content: flex-end; /* 右寄せ */
-    background: transparent;
-    pointer-events: none !important; 
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+    /* 右側配置のときは常に左を向かせる */
+    transform: scaleX(-1);
   }
 
-  .chara-anchor {
+  .balloon-positioner {
     position: relative;
-    margin-right: 200px; /* 右端からキャラまでの距離（メッセージ用スペース） */
-    margin-bottom: 20px;
-    width: 128px;
-    height: 128px;
-    pointer-events: none !important;
-  }
-
-  .chara-container :global(*) {
-    pointer-events: none !important;
+    pointer-events: none;
+    z-index: 10;
+    /* キャラの透明部分に重ねて密着させる（反転しているのでマイナス値を調整） */
+    margin-right: -25px; 
+    margin-top: 10px;
   }
 
   .modal-backdrop {
@@ -179,18 +249,10 @@
     justify-content: center;
     background: rgba(0, 0, 0, 0.1);
     z-index: 1000;
-    pointer-events: auto !important;
-  }
-
-  .settings-backdrop {
-    align-items: flex-start;
-    padding-top: 20px;
+    pointer-events: auto;
   }
 
   .onboarding-backdrop {
-    align-items: flex-end;
-    justify-content: flex-end;
-    padding: 0 20px 20px 0;
     background: transparent;
   }
 </style>

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -120,17 +119,20 @@ type SetupStatus struct {
 // DetectSetupStatus は現在の環境からセットアップ状況を判定する（Wailsバインディング）。
 func (a *App) DetectSetupStatus() SetupStatus {
 	backends := []string{}
-	// Ollamaの確認
-	resp, err := http.Get("http://localhost:11434/api/tags")
-	if err == nil {
-		resp.Body.Close()
+	if a.speech.IsAvailable("ollama") {
 		backends = append(backends, "ollama")
+	}
+	if a.speech.IsAvailable("claude") {
+		backends = append(backends, "claude")
+	}
+	if a.speech.IsAvailable("gemini") {
+		backends = append(backends, "gemini")
 	}
 
 	return SetupStatus{
 		IsFirstRun:       !a.cfg.SetupCompleted,
 		DetectedBackends: backends,
-		HasClaudeKey:     a.cfg.AnthropicAPIKey != "",
+		HasClaudeKey:     a.speech.IsAvailable("claude"),
 	}
 }
 
@@ -352,8 +354,16 @@ func (a *App) applyWindowPreferences(cfg config.Config) {
 				break
 			}
 		}
-		x := screen.Size.Width - width - 20
-		y := screen.Size.Height - height - 50
+
+		var x, y int
+		switch cfg.WindowPosition {
+		case "bottom-right":
+			x = screen.Size.Width - width - 5
+			y = screen.Size.Height - height - 5
+		default: // top-right
+			x = screen.Size.Width - width - 5
+			y = 30
+		}
 		runtime.WindowSetPosition(a.ctx, x, y)
 	}
 

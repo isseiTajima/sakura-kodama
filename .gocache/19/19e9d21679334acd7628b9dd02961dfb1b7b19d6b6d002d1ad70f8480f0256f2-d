@@ -1,0 +1,21 @@
+# test log
+getenv GOTMPDIR
+getenv TMPDIR
+getenv GOTMPDIR
+getenv TMPDIR
+getenv GOTMPDIR
+getenv TMPDIR
+open /var/folders/wd/kcmgrmr959x332kp6hpntgfc0000gn/T/TestDetectorReadLog_EmitsSignalsAndExitCode4159299211/001/claude.log
+open /var/folders/wd/kcmgrmr959x332kp6hpntgfc0000gn/T/TestDetectorReadLog_HandlesTruncateAndNewLines1049126393/001/claude.log
+open /var/folders/wd/kcmgrmr959x332kp6hpntgfc0000gn/T/TestDetectorReadLog_IgnoresUnchangedFiles919044125/001/claude.log
+open /var/folders/wd/kcmgrmr959x332kp6hpntgfc0000gn/T/TestDetectorReadLog_IgnoresUnchangedFiles919044125/001/claude.log
+open /var/folders/wd/kcmgrmr959x332kp6hpntgfc0000gn/T/TestDetectorReadLog_HandlesTruncateAndNewLines1049126393/001/claude.log
+open /var/folders/wd/kcmgrmr959x332kp6hpntgfc0000gn/T/TestDetectorReadLog_EmitsSignalsAndExitCode4159299211/001/claude.log
+open /var/folders/wd/kcmgrmr959x332kp6hpntgfc0000gn/T/TestDetectorReadLog_IgnoresUnchangedFiles919044125/001/claude.log
+open /var/folders/wd/kcmgrmr959x332kp6hpntgfc0000gn/T/TestDetectorReadLog_HandlesTruncateAndNewLines1049126393/001/claude.log
+open /var/folders/wd/kcmgrmr959x332kp6hpntgfc0000gn/T
+open /var/folders/wd/kcmgrmr959x332kp6hpntgfc0000gn/T/TestDetectorReadLog_HandlesTruncateAndNewLines1049126393/001/claude.log
+open /var/folders/wd/kcmgrmr959x332kp6hpntgfc0000gn/T
+open /var/folders/wd/kcmgrmr959x332kp6hpntgfc0000gn/T/TestDetectorReadLog_HandlesTruncateAndNewLines1049126393/001/claude.log
+open /var/folders/wd/kcmgrmr959x332kp6hpntgfc0000gn/T/TestDetectorReadLog_HandlesTruncateAndNewLines1049126393/001/claude.log
+open /var/folders/wd/kcmgrmr959x332kp6hpntgfc0000gn/T

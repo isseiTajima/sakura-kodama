@@ -32,9 +32,11 @@ export type AppConfig = {
   independent_window_opacity: number
   llm_backend: string
   anthropic_api_key: string
+  gemini_api_key: string
   setup_completed: boolean
   auto_start: boolean
   speech_frequency: number
+  window_position: string
 }
 
 const DEFAULT_NAME = 'サクラ'
@@ -61,6 +63,7 @@ export const defaultConfig: AppConfig = {
   setup_completed: false,
   auto_start: true,
   speech_frequency: 2,
+  window_position: "top-right",
 }
 
 const FALLBACK_STORAGE_KEY = 'wails:fallbackConfig'

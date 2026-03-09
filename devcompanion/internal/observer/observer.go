@@ -29,8 +29,8 @@ const (
 	idleCooldown        = 3 * time.Minute
 	nightWorkCooldown   = 30 * time.Minute
 	activeEditWindow    = 2 * time.Minute
-	activeEditThreshold = 3
-	activeEditCooldown  = 5 * time.Minute
+	activeEditThreshold = 10 // 3から10に引き上げ
+	activeEditCooldown  = 10 * time.Minute // クールダウンも長く
 	gitCooldown         = 5 * time.Minute
 	observationBufSize  = 16
 )

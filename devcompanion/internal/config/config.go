@@ -19,6 +19,7 @@ type Config struct {
 	Model                    string   `json:"model" yaml:"model"`
 	OllamaEndpoint           string   `json:"ollama_endpoint" yaml:"ollama_endpoint"`
 	AnthropicAPIKey          string   `json:"anthropic_api_key" yaml:"anthropic_api_key"`
+	GeminiAPIKey             string   `json:"gemini_api_key" yaml:"gemini_api_key"`
 	LLMBackend               string   `json:"llm_backend" yaml:"llm_backend"`
 	LogPaths                 []string `json:"log_paths" yaml:"log_paths"`
 	AutoStart                bool     `json:"auto_start" yaml:"auto_start"`
@@ -27,6 +28,8 @@ type Config struct {
 	ClickThrough             bool     `json:"click_through" yaml:"click_through"`
 	SetupCompleted           bool     `json:"setup_completed" yaml:"setup_completed"`
 	SpeechFrequency          int      `json:"speech_frequency" yaml:"speech_frequency"`
+	WindowPosition           string   `json:"window_position" yaml:"window_position"` // top-right, bottom-right
+	Language                 string   `json:"language" yaml:"language"`               // ja, en
 }
 
 type AppConfig struct {
@@ -55,6 +58,8 @@ func DefaultConfig() *Config {
 		ClickThrough:             true,
 		SetupCompleted:           false,
 		SpeechFrequency:          2,
+		WindowPosition:           "top-right",
+		Language:                 "ja",
 	}
 }
 
@@ -78,8 +83,7 @@ func DefaultConfigPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// Wails の設定やシグナルログと同じディレクトリに統一
-	return filepath.Join(home, ".devcompanion", "config.yaml"), nil
+	return filepath.Join(home, ".config", "devcompanion", "config.yaml"), nil
 }
 
 func LoadConfig() (*AppConfig, error) {
@@ -94,9 +98,7 @@ func LoadConfig() (*AppConfig, error) {
 	}
 
 	cfg := DefaultAppConfig()
-	// YAML優先
 	if err := yaml.Unmarshal(data, cfg); err != nil {
-		// 失敗した場合はJSONとして試行
 		if err := json.Unmarshal(data, cfg); err != nil {
 			return DefaultAppConfig(), err
 		}

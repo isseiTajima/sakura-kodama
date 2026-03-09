@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 )
@@ -9,20 +10,21 @@ import (
 const (
 	ollamaRouterTimeout = 15 * time.Second
 	claudeRouterTimeout = 10 * time.Second
-	aicliRouterTimeout  = 10 * time.Second
+	geminiRouterTimeout = 20 * time.Second
+	aicliRouterTimeout  = 6 * time.Second
 )
+
+type LLMClient interface {
+	Generate(ctx context.Context, in OllamaInput) (string, error)
+	IsAvailable() bool
+}
 
 // LLMRouter は複数のLLMバックエンドを優先度順にルーティングする。
 type LLMRouter struct {
-	ollama interface {
-		Generate(ctx context.Context, in OllamaInput) (string, error)
-	}
-	claude interface {
-		Generate(ctx context.Context, in OllamaInput) (string, error)
-	}
-	aiCLI interface {
-		Generate(ctx context.Context, in OllamaInput) (string, error)
-	}
+	ollama LLMClient
+	claude LLMClient
+	gemini LLMClient
+	aiCLI  LLMClient
 }
 
 // Route はプロンプトをLLMバックエンドにルーティングし、(応答テキスト, 使用したレイヤー名, エラー) を返す。
@@ -32,68 +34,39 @@ func (r *LLMRouter) Route(ctx context.Context, input OllamaInput) (string, strin
 	}
 
 	// Layer 1: Ollama
-	result, ok := tryOllama(ctx, r.ollama, input)
-	if ok {
+	if result, ok := r.try(ctx, r.ollama, ollamaRouterTimeout, input, "Ollama"); ok {
 		return result, "Ollama", nil
 	}
 
 	// Layer 2: Claude
-	result, ok = tryClaude(ctx, r.claude, input)
-	if ok {
+	if result, ok := r.try(ctx, r.claude, claudeRouterTimeout, input, "Claude"); ok {
 		return result, "Claude", nil
 	}
 
-	// Layer 3: ai CLI (Gemini)
-	result, ok = tryAICLI(ctx, r.aiCLI, input)
-	if ok {
+	// Layer 3: Gemini (API)
+	if result, ok := r.try(ctx, r.gemini, geminiRouterTimeout, input, "Gemini"); ok {
 		return result, "Gemini", nil
 	}
 
-	// Layer 4: Fallback
-	return FallbackSpeech(Reason(input.Reason)), "Fallback", nil
+	// Layer 4: ai CLI (Legacy)
+	if result, ok := r.try(ctx, r.aiCLI, aicliRouterTimeout, input, "Gemini-CLI"); ok {
+		return result, "Gemini-CLI", nil
+	}
+
+	return "", "", fmt.Errorf("all LLM backends failed")
 }
 
-func tryOllama(ctx context.Context, client interface {
-	Generate(ctx context.Context, in OllamaInput) (string, error)
-}, input OllamaInput) (string, bool) {
-	if client == nil {
+func (r *LLMRouter) try(ctx context.Context, client LLMClient, timeout time.Duration, input OllamaInput, name string) (string, bool) {
+	if client == nil || !client.IsAvailable() {
 		return "", false
 	}
-	timeoutCtx, cancel := context.WithTimeout(ctx, ollamaRouterTimeout)
+	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	
 	result, err := client.Generate(timeoutCtx, input)
 	if err != nil {
-		log.Printf("[DEBUG] Ollama error: %v", err)
-	}
-	return result, err == nil && result != ""
-}
-
-func tryClaude(ctx context.Context, client interface {
-	Generate(ctx context.Context, in OllamaInput) (string, error)
-}, input OllamaInput) (string, bool) {
-	if client == nil {
+		log.Printf("[DEBUG] %s error: %v", name, err)
 		return "", false
 	}
-	timeoutCtx, cancel := context.WithTimeout(ctx, claudeRouterTimeout)
-	defer cancel()
-	result, err := client.Generate(timeoutCtx, input)
-	if err != nil {
-		log.Printf("[DEBUG] Claude error: %v", err)
-	}
-	return result, err == nil && result != ""
-}
-
-func tryAICLI(ctx context.Context, client interface {
-	Generate(ctx context.Context, in OllamaInput) (string, error)
-}, input OllamaInput) (string, bool) {
-	if client == nil {
-		return "", false
-	}
-	timeoutCtx, cancel := context.WithTimeout(ctx, aicliRouterTimeout)
-	defer cancel()
-	result, err := client.Generate(timeoutCtx, input)
-	if err != nil {
-		log.Printf("[DEBUG] Gemini-CLI error: %v", err)
-	}
-	return result, err == nil && result != ""
+	return result, result != ""
 }

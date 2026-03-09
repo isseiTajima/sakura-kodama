@@ -50,6 +50,7 @@ func TestSpeechGenerator_WithRouter_OllamaFail_ClaudeSuccess(t *testing.T) {
 
 func TestSpeechGenerator_WithRouter_AllLayersFail_ReturnsFallback(t *testing.T) {
 	t.Parallel()
+	SetSeed(42) // 決定論的シード
 
 	cfg := &config.Config{
 		Name:            "TestBot",

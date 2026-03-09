@@ -36,6 +36,10 @@ func (m *mockClient) Generate(ctx context.Context, in OllamaInput) (string, erro
 	return m.response, nil
 }
 
+func (m *mockClient) IsAvailable() bool {
+	return true // テストでは常に利用可能とする（try()を通過させてGenerate()を呼ばせるため）
+}
+
 // TestLLMRouter_OllamaSuccess はOllama層の成功時を検証。
 func TestLLMRouter_OllamaSuccess(t *testing.T) {
 	t.Parallel()
@@ -125,6 +129,7 @@ func TestLLMRouter_OllamaFail_ClaudeSuccess(t *testing.T) {
 // TestLLMRouter_AllLayersFail_ReturnsFallback は全層失敗時のフォールバック。
 func TestLLMRouter_AllLayersFail_ReturnsFallback(t *testing.T) {
 	t.Parallel()
+	SetSeed(42) // 決定論的シード設定
 
 	// Given: 全層失敗
 	router := &LLMRouter{

@@ -1,0 +1,5 @@
+./clonetree.go
+./clonetree_stub.go
+./pack.go
+./trace.go
+./unpack.go

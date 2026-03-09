@@ -1,0 +1,6 @@
+./area.go
+./area_other.go
+./cursor.go
+./cursor_other.go
+./doc.go
+./utils.go

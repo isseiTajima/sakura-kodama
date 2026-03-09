@@ -32,6 +32,7 @@ func NewSpeechGenerator(cfg *config.Config) *SpeechGenerator {
 		router: &LLMRouter{
 			ollama: NewOllamaClient(cfg.OllamaEndpoint, cfg.Model),
 			claude: NewAnthropicClient(cfg.AnthropicAPIKey),
+			gemini: NewGeminiClient(cfg.GeminiAPIKey),
 			aiCLI:  NewAICLIClient(),
 		},
 		cache:       NewSpeechCache(),
@@ -84,6 +85,23 @@ func (sg *SpeechGenerator) UpdateLLMConfig(cfg *config.Config) {
 	defer sg.mu.Unlock()
 	sg.router.ollama = NewOllamaClient(cfg.OllamaEndpoint, cfg.Model)
 	sg.router.claude = NewAnthropicClient(cfg.AnthropicAPIKey)
+	sg.router.gemini = NewGeminiClient(cfg.GeminiAPIKey)
+}
+
+// IsAvailable は指定されたバックエンドが利用可能か（設定されているか）を返す。
+func (sg *SpeechGenerator) IsAvailable(backend string) bool {
+	sg.mu.RLock()
+	defer sg.mu.RUnlock()
+	switch backend {
+	case "ollama":
+		return sg.router.ollama != nil && sg.router.ollama.IsAvailable()
+	case "claude":
+		return sg.router.claude != nil && sg.router.claude.IsAvailable()
+	case "gemini":
+		return sg.router.gemini != nil && sg.router.gemini.IsAvailable()
+	default:
+		return false
+	}
 }
 
 // OnUserClick はユーザークリック時のセリフを生成する。
@@ -108,7 +126,7 @@ func (sg *SpeechGenerator) generateText(e monitor.MonitorEvent, cfg *config.Conf
 
 	moodStr := string(newMood)
 	eventStr := reasonToEventContext(reason)
-	cacheKey := eventStr + ":" + moodStr
+	cacheKey := eventStr + ":" + moodStr + ":" + cfg.Language
 
 	// 1. キャッシュのチェック
 	if eventStr != "" && cache != nil {
@@ -137,6 +155,7 @@ func (sg *SpeechGenerator) generateText(e monitor.MonitorEvent, cfg *config.Conf
 		CommitFrequency: prof.CommitFrequency,
 		BuildFailRate:   prof.BuildFailRate,
 		TimeOfDay:       getTimeOfDay(time.Now().Hour()),
+		Language:        cfg.Language,
 	}
 
 	var text string
@@ -147,9 +166,9 @@ func (sg *SpeechGenerator) generateText(e monitor.MonitorEvent, cfg *config.Conf
 	for retry := 0; retry < maxRetries; retry++ {
 		var err error
 		text, backend, err = router.Route(context.Background(), input)
-		if err != nil {
-			log.Printf("[DEBUG] Router error: %v", err)
-			return FallbackSpeech(reason)
+		if err != nil || backend == "Fallback" {
+			log.Printf("[DEBUG] Router error or Fallback: %v", err)
+			return sg.fallbackSpeech(reason, cfg.Language)
 		}
 
 		if state != nil && state.IsDuplicate(text) {
@@ -171,7 +190,7 @@ func (sg *SpeechGenerator) generateText(e monitor.MonitorEvent, cfg *config.Conf
 
 	if text == "" {
 		log.Printf("[DEBUG] LLM returned empty/invalid text, using fallback")
-		return FallbackSpeech(reason)
+		return sg.fallbackSpeech(reason, cfg.Language)
 	}
 
 	log.Printf("[DEBUG] Final generated speech [%s]: '%s'", backend, text)
@@ -238,37 +257,27 @@ func (fc *FrequencyController) ShouldSpeak(reason Reason, state types.ContextSta
 	fc.mu.Lock()
 	defer fc.mu.Unlock()
 
-	// ユーザーがクリックした場合は必ず喋る
-	if reason == ReasonUserClick {
-		return true
-	}
-
-	// 前回の発話から短時間（例: 30秒）は、どんな理由でも沈黙を守る（連続発話防止）
-	if !fc.lastSpeakTime.IsZero() && now.Sub(fc.lastSpeakTime) < 30*time.Second {
-		return false
-	}
-
-	// 理由ごとの詳細制御
+	// デバッグ用: Success/Fail は 100% 喋る設定を維持
 	switch reason {
 	case ReasonSuccess, ReasonFail:
-		// 状態が変化した瞬間だけ喋る
 		if state != fc.lastState {
 			return true
 		}
 		return false
-
+	case ReasonUserClick:
+		return true
 	case ReasonThinkingTick:
 		if !cfg.Monologue || now.Before(fc.cooldownUntil) {
 			return false
 		}
 		
 		// 頻度設定に応じた間隔（ThinkingTick用）
-		interval := 10 * time.Minute
+		interval := 5 * time.Minute
 		switch cfg.SpeechFrequency {
 		case 1: // 控えめ
-			interval = 20 * time.Minute
+			interval = 15 * time.Minute
 		case 3: // お喋り
-			interval = 1 * time.Minute 
+			interval = 2 * time.Minute
 		}
 
 		if now.Sub(fc.lastSpeakTime) < interval {
@@ -277,8 +286,6 @@ func (fc *FrequencyController) ShouldSpeak(reason Reason, state types.ContextSta
 		return true
 	}
 
-	// その他の理由（Gitコミット、セッション開始など）は、
-	// 最初の30秒間隔チェックをパスしていれば許可
 	return true
 }
 
@@ -316,6 +323,6 @@ func getTimeOfDay(h int) string {
 	}
 }
 
-func (sg *SpeechGenerator) fallbackSpeech(reason Reason) string {
-	return FallbackSpeech(reason)
+func (sg *SpeechGenerator) fallbackSpeech(reason Reason, lang string) string {
+	return FallbackSpeech(reason, lang)
 }

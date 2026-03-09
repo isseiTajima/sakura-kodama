@@ -1,0 +1,3 @@
+
+Claude unavailable (Error 124) → switching to Gemini...
+Loaded cached credentials.

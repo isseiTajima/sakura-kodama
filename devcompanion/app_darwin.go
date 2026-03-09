@@ -5,6 +5,7 @@ package main
 #cgo LDFLAGS: -framework Cocoa
 #include <stdbool.h>
 #include <stdlib.h>
+
 void SetupNativeTray(const char* iconPath);
 void SetWindowClickThroughNative(bool ignore);
 */
@@ -22,7 +23,6 @@ var globalAppInstance *App
 //export goOnTraySettingsClicked
 func goOnTraySettingsClicked() {
 	if globalAppInstance != nil && globalAppInstance.ctx != nil {
-		// UI操作は非同期で行うのがmacOSの鉄則
 		go func() {
 			runtime.EventsEmit(globalAppInstance.ctx, "open-settings")
 			runtime.WindowShow(globalAppInstance.ctx)
