@@ -227,6 +227,10 @@ func (sg *SpeechGenerator) generateTextLocked(e monitor.MonitorEvent, cfg *confi
 			go sg.triggerRefill(key, personality, string(cfg.RelationshipMode), category, cfg.Language, cfg.UserName, prof)
 		}
 		sg.usingFallback = false
+		// プール生成テキスト内の〇〇プレースホルダーをユーザー名に置換
+		if cfg.UserName != "" {
+			speech = strings.ReplaceAll(speech, "〇〇", cfg.UserName)
+		}
 		if sg.state != nil {
 			sg.state.AddLine(speech)
 		}
@@ -527,6 +531,14 @@ func postProcess(s string) string {
 	if strings.Count(s, "先輩") > 1 {
 		first := strings.Index(s, "先輩")
 		s = s[:first+6] + strings.ReplaceAll(s[first+6:], "先輩", "")
+	}
+
+	// 5. ハングル文字が含まれていたら破棄（言語混入: LLM が韓国語を混在させた）
+	for _, r := range s {
+		if (r >= 0xAC00 && r <= 0xD7A3) || (r >= 0x1100 && r <= 0x11FF) || (r >= 0x3130 && r <= 0x318F) {
+			log.Printf("[WARN] postProcess: Korean chars detected, discarding: %s", s)
+			return ""
+		}
 	}
 
 	return s
