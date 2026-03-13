@@ -270,6 +270,7 @@ func (sg *SpeechGenerator) generateDirect(e monitor.MonitorEvent, cfg *config.Co
 		TimeOfDay:        getTimeOfDay(time.Now().Hour(), cfg.Language),
 		Language:         cfg.Language,
 		Question:         question,
+		IsAnswerReaction: reason == ReasonQuestionAnswered,
 		WorkMemory:       memStr,
 		LastAnswer:       sg.lastSpeech,
 		PersonalityType:  sg.inferPersonalityType(reason, cfg),

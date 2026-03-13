@@ -82,7 +82,8 @@ type OllamaInput struct {
 	BuildFailRate    string
 	TimeOfDay        string
 	Language         string // ja, en
-	Question         string // ユーザーからの直接の質問
+	Question         string // ユーザーからの直接の質問、またはユーザーの回答テキスト
+	IsAnswerReaction bool   // true: ユーザーが質問に回答した後のリアクション（ReasonQuestionAnswered）
 	WorkMemory       string // 直近の作業メモリの要約
 	TraitID          string // 学習用特性ID
 	TraitLabel       string // 特性の説明ラベル（i18n から引く）

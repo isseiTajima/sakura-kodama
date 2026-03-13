@@ -44,8 +44,8 @@ func (s *FSSensor) Run(ctx context.Context, signals chan<- types.Signal) error {
 			if !ok {
 				return nil
 			}
-			log.Printf("[DEBUG] FSSensor event: %v", event)
-			
+			// log.Printf("[DEBUG] FSSensor event: %v", event)
+
 			// 新しいディレクトリが作成されたら監視対象に追加
 			if event.Op&fsnotify.Create == fsnotify.Create {
 				info, err := os.Stat(event.Name)
