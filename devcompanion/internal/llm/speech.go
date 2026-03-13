@@ -117,7 +117,7 @@ func (sg *SpeechGenerator) Generate(e monitor.MonitorEvent, cfg *config.Config, 
 		sg.failStreak = 0
 	}
 
-	finalSpeech := postProcess(speech)
+	finalSpeech := postProcess(speech, cfg.Language)
 	log.Printf("[DEBUG] Generated speech [%s]: '%s'", backend, finalSpeech)
 	return finalSpeech, prompt, backend
 }
@@ -487,7 +487,35 @@ func stripCodeBlock(s string) string {
 	return buffer.String()
 }
 
-func postProcess(s string) string {
+// wrongScriptRunes は lang の設定と合わない文字スクリプトが含まれているか判定する。
+// 「言語設定外の文字が混入した = LLM が言語を間違えた」として破棄判定に使う。
+func wrongScriptRunes(s, lang string) bool {
+	for _, r := range s {
+		// いずれの言語でもあってはならないスクリプト
+		switch {
+		case r >= 0xAC00 && r <= 0xD7A3: return true // ハングル音節
+		case r >= 0x1100 && r <= 0x11FF: return true // ハングル字母
+		case r >= 0x3130 && r <= 0x318F: return true // ハングル互換字母
+		case r >= 0x0600 && r <= 0x06FF: return true // アラビア語
+		case r >= 0x0900 && r <= 0x097F: return true // デーヴァナーガリー
+		case r >= 0x0400 && r <= 0x04FF: return true // キリル文字
+		case r >= 0x0590 && r <= 0x05FF: return true // ヘブライ語
+		case r >= 0x0E00 && r <= 0x0E7F: return true // タイ語
+		}
+		// 英語設定では日本語・CJK 系も不正
+		if lang == "en" {
+			switch {
+			case r >= 0x3040 && r <= 0x309F: return true // ひらがな
+			case r >= 0x30A0 && r <= 0x30FF: return true // カタカナ
+			case r >= 0x4E00 && r <= 0x9FFF: return true // CJK統合漢字
+			case r >= 0x3400 && r <= 0x4DBF: return true // CJK拡張A
+			}
+		}
+	}
+	return false
+}
+
+func postProcess(s, lang string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return ""
@@ -533,12 +561,10 @@ func postProcess(s string) string {
 		s = s[:first+6] + strings.ReplaceAll(s[first+6:], "先輩", "")
 	}
 
-	// 5. ハングル文字が含まれていたら破棄（言語混入: LLM が韓国語を混在させた）
-	for _, r := range s {
-		if (r >= 0xAC00 && r <= 0xD7A3) || (r >= 0x1100 && r <= 0x11FF) || (r >= 0x3130 && r <= 0x318F) {
-			log.Printf("[WARN] postProcess: Korean chars detected, discarding: %s", s)
-			return ""
-		}
+	// 5. 言語設定外の文字スクリプトが含まれていたら破棄（LLM 言語混入）
+	if wrongScriptRunes(s, lang) {
+		log.Printf("[WARN] postProcess: wrong-script chars detected (lang=%s), discarding: %s", lang, s)
+		return ""
 	}
 
 	return s

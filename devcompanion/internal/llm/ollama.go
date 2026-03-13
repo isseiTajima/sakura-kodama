@@ -318,7 +318,7 @@ func (c *OllamaClient) BatchGenerate(ctx context.Context, req BatchRequest) ([]s
 		return nil, fmt.Errorf("batch generate returned status %d", resp.StatusCode)
 	}
 
-	return parseBatchResponse(result.Message.Content), nil
+	return parseBatchResponse(result.Message.Content, req.Language), nil
 }
 
 func buildBatchPrompt(req BatchRequest) string {
@@ -388,7 +388,7 @@ func buildBatchPrompt(req BatchRequest) string {
 // listPrefixRe は Unicode 数字（全角・ベンガル等を含む）から始まる番号付きリストの行頭を除去する。
 var listPrefixRe = regexp.MustCompile(`^\p{N}+[\s\.．）\)、:：]+\s*`)
 
-func parseBatchResponse(raw string) []string {
+func parseBatchResponse(raw, lang string) []string {
 	lines := strings.Split(raw, "\n")
 	var result []string
 	for _, line := range lines {
@@ -406,7 +406,7 @@ func parseBatchResponse(raw string) []string {
 			}
 		}
 		line = strings.TrimSpace(line)
-		processed := postProcess(line)
+		processed := postProcess(line, lang)
 		if processed != "" {
 			result = append(result, processed)
 		}
