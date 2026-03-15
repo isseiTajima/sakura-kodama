@@ -17,10 +17,11 @@ type SituationEngine struct {
 	mu         sync.RWMutex
 	world      types.WorldModel
 	emotion    types.EmotionState
-	
-	lastFailCount int
-	activityCount int
-	sessionStart  time.Time
+
+	lastFailCount  int
+	activityCount  int
+	sessionStart   time.Time
+	lastDeepWorkAt time.Time // 最後にDeepWork/Codingイベントを受け取った時刻
 }
 
 func NewSituationEngine() *SituationEngine {
@@ -56,6 +57,7 @@ func (s *SituationEngine) ProcessEvent(ev types.Event) (types.WorldModel, types.
 		
 		if state == string(types.StateDeepWork) || state == string(types.StateCoding) {
 			s.activityCount++
+			s.lastDeepWorkAt = time.Now()
 			if s.activityCount >= DeepWorkActivityThreshold {
 				s.world.IsDeepWork = true
 			}
@@ -70,15 +72,26 @@ func (s *SituationEngine) ProcessEvent(ev types.Event) (types.WorldModel, types.
 		}
 	}
 
-	// Momentum decay
-	s.world.Momentum *= 0.95
-	if s.world.Momentum > 1.0 { s.world.Momentum = 1.0 }
+	// Momentum decay: 0.99/event で緩やかに減衰（コミット後の勢いが数時間持続）
+	s.world.Momentum *= 0.99
+	if s.world.Momentum > 1.0 {
+		s.world.Momentum = 1.0
+	}
 
 	s.emotion = s.inferEmotion()
 	return s.world, s.emotion
 }
 
+const deepWorkIdleTimeout = 30 * time.Minute
+
 func (s *SituationEngine) inferEmotion() types.EmotionState {
+	// DeepWork中でも、最後のコーディングイベントから30分以上経過したらリセット
+	if s.world.IsDeepWork {
+		if !s.lastDeepWorkAt.IsZero() && time.Since(s.lastDeepWorkAt) > deepWorkIdleTimeout {
+			s.world.IsDeepWork = false
+			s.activityCount = 0
+		}
+	}
 	if s.world.IsDeepWork {
 		return types.EmotionQuiet
 	}

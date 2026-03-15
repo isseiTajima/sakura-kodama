@@ -92,7 +92,8 @@ type OllamaInput struct {
 	PastAnswers      []string // このトレイトへの過去回答履歴（LLMに重複質問を避けさせるため）
 	PersonalityType  string // "genki", "cute", "tsukime"
 	RelationshipMode string // "normal", "lover"
-	LearnedTraits    map[string]float64 // 学習されたユーザーの特性 (0.0 - 1.0)
+	LearnedTraits      map[string]float64 // 学習されたユーザーの特性 (後方互換)
+	LearnedTraitLabels map[string]string  // 学習済み特性のテキストラベル（回答内容）
 	RandomSeed       int64  // 毎回異なる値を注入してプロンプトの一意性を保証
 }
 
@@ -366,7 +367,21 @@ func buildBatchPrompt(req BatchRequest) string {
 	}
 
 	traitsSection := ""
-	if len(req.LearnedTraits) > 0 {
+	if len(req.LearnedTraitLabels) > 0 {
+		if lang == "en" {
+			traitsSection = "\n[Known about the user]\n"
+		} else {
+			traitsSection = "\n【先輩について分かっていること】\n"
+		}
+		for id, answer := range req.LearnedTraitLabels {
+			label := i18n.T(lang, "trait."+id)
+			if label == "trait."+id {
+				label = id
+			}
+			traitsSection += fmt.Sprintf("- %s: %s\n", label, answer)
+		}
+	} else if len(req.LearnedTraits) > 0 {
+		// 後方互換: LearnedTraitLabels がない場合は float を使う
 		if lang == "en" {
 			traitsSection = "\n[Known about the user]\n"
 		} else {
@@ -375,7 +390,7 @@ func buildBatchPrompt(req BatchRequest) string {
 		for id, val := range req.LearnedTraits {
 			label := i18n.T(lang, "trait."+id)
 			if label == "trait."+id {
-				label = id // i18n キーが未定義の場合はIDをそのまま使う
+				label = id
 			}
 			traitsSection += fmt.Sprintf("- %s: %.1f\n", label, val)
 		}

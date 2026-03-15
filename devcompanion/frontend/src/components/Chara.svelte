@@ -3,7 +3,8 @@
   import c1Half from '../assets/pixel-chara1-half.png'
   import c1Close from '../assets/pixel-chara1-close.png'
   
-  import c2Happy from '../assets/pixel-chara2-happy.png'
+  import c2Happy1 from '../assets/pixel-chara2.png'
+  import c2Happy2 from '../assets/pixel-chara2-happy.png'
   
   import c3Sad1 from '../assets/pixel-chara3.png'
   import c3Sad2 from '../assets/pixel-chara3-2.png'
@@ -20,46 +21,62 @@
   // 目パチの状態管理
   let eyeState = $state(0) // 0:open, 1:half, 2:close
   let blinkTimer: ReturnType<typeof setTimeout>
+// 強い喜びの維持用
+let joyTimer: ReturnType<typeof setTimeout> | null = null
+let forceHappy = $state(false)
+let joyFrame = $state(0)
+let joyFrameTimer: ReturnType<typeof setInterval> | null = null
 
-  // 強い喜びの維持用
-  let joyTimer: ReturnType<typeof setTimeout> | null = null
-  let forceHappy = $state(false)
+// 悲しみの固有アニメーション用
+let sadFrame = $state(0)
+let sadTimer: ReturnType<typeof setInterval> | null = null
 
-  // 悲しみの固有アニメーション用
-  let sadFrame = $state(0)
-  let sadTimer: ReturnType<typeof setInterval> | null = null
+$effect(() => {
+  // 喜びの処理
+  if (mood === 'StrongJoy' || mood === 'Positive' || forceHappy) {
+    if (!joyFrameTimer) {
+      joyFrameTimer = setInterval(() => {
+        joyFrame = (joyFrame + 1) % 2
+      }, 500)
+    }
 
-  $effect(() => {
-    // 喜びの処理
+    // 新規イベント時のみタイマーをリセット
     if (mood === 'StrongJoy' || mood === 'Positive') {
       forceHappy = true
       if (joyTimer) clearTimeout(joyTimer)
       joyTimer = setTimeout(() => {
         forceHappy = false
-      }, 8000) // 喜びは8秒間維持
+      }, 8000)
     }
+  } else {
+    if (joyFrameTimer) {
+      clearInterval(joyFrameTimer)
+      joyFrameTimer = null
+    }
+  }
 
-    // 悲しみの処理
-    if (mood === 'Sadness' || mood === 'Negative') {
-      if (!sadTimer) {
-        sadTimer = setInterval(() => {
-          sadFrame = (sadFrame + 1) % 2
-        }, 500)
-      }
-    } else {
-      if (sadTimer) {
-        clearInterval(sadTimer)
-        sadTimer = null
-      }
+  // 悲しみの処理
+  if (mood === 'Sadness' || mood === 'Negative') {
+    if (!sadTimer) {
+      sadTimer = setInterval(() => {
+        sadFrame = (sadFrame + 1) % 2
+      }, 500)
     }
-  })
+  } else {
+    if (sadTimer) {
+      clearInterval(sadTimer)
+      sadTimer = null
+    }
+  }
+})
 
-  function blink() {
-    if (mood === 'Sadness' || mood === 'Negative') {
-      blinkTimer = setTimeout(blink, 1000)
-      return
-    }
-    eyeState = 1
+function blink() {
+  if (mood === 'Sadness' || mood === 'Negative' || mood === 'StrongJoy' || mood === 'Positive' || forceHappy) {
+    // 特殊表情中はまばたきを止める
+    blinkTimer = setTimeout(blink, 1000)
+    return
+  }
+  eyeState = 1
     setTimeout(() => {
       eyeState = 2
       setTimeout(() => {
@@ -78,6 +95,8 @@
     return () => {
       clearTimeout(blinkTimer)
       if (joyTimer) clearTimeout(joyTimer)
+      if (joyFrameTimer) clearInterval(joyFrameTimer)
+      if (sadTimer) clearInterval(sadTimer)
     }
   })
 
@@ -90,9 +109,9 @@
       return sadFrame === 0 ? c3Sad1 : c3Sad2
     }
 
-    // 強い喜び、または維持期間中
-    if (mood === 'StrongJoy' || forceHappy) {
-      return c2Happy
+    // 喜び状態（強い喜び、軽い喜び、または維持期間中）
+    if (mood === 'StrongJoy' || mood === 'Positive' || forceHappy) {
+      return joyFrame === 0 ? c2Happy1 : c2Happy2
     }
     
     // 通常状態（瞬き）

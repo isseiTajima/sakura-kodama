@@ -3,7 +3,6 @@ package ws
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -47,7 +46,6 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/trigger", s.handleTrigger) // HTTPエンドポイント追加
 	
 	addr := fmt.Sprintf("127.0.0.1:%d", WSPort)
-	log.Printf("[WS] Server starting on %s", addr)
 	return http.ListenAndServe(addr, mux)
 }
 

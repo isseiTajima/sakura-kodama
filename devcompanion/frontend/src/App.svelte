@@ -150,6 +150,7 @@
       r.EventsOn('observation_event', updateUI)
       r.EventsOn('greeting_event', updateUI)
       r.EventsOn('click_event', updateUI)
+      r.EventsOn('question_reply_event', updateUI)
       r.EventsOn('question_event', (payload: any) => updateUI({ type: "question_event", payload }))
     } else {
       console.log('Running in Browser/Server mode, connecting WebSocket')

@@ -4,6 +4,7 @@ import (
 	"sakura-kodama/internal/types"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"sync"
 	"time"
@@ -128,7 +129,15 @@ func (ps *ProfileStore) RecordTraitUpdate(trait types.TraitID, value float64, an
 	}
 
 	prog := ps.data.Evolution[trait]
-	prog.Confidence += 0.2
+
+	// 矛盾検出: 前の回答と新しい回答が大きく異なる場合は信頼度を下げる
+	if current != 0 && math.Abs(current-value) > 0.4 {
+		prog.Confidence = math.Max(0.1, prog.Confidence-0.1)
+		fmt.Printf("[LEARNING] Contradiction detected for %s (prev=%.2f, new=%.2f) — confidence adjusted to %.2f\n",
+			trait, current, value, prog.Confidence)
+	} else {
+		prog.Confidence += 0.2
+	}
 	if prog.Confidence > 1.0 {
 		prog.Confidence = 1.0
 	}

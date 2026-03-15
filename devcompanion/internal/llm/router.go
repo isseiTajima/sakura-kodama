@@ -27,7 +27,8 @@ type BatchRequest struct {
 	Category          string
 	Language          string
 	UserName          string
-	LearnedTraits     map[string]float64 // 学習されたユーザーの特性
+	LearnedTraits      map[string]float64 // 学習されたユーザーの特性 (後方互換)
+	LearnedTraitLabels map[string]string  // 学習済み特性のテキストラベル（回答内容）
 	Count             int
 	RecentLines       []string // avoid list: 直近の発言履歴
 	DiscardedPatterns []string // 動的Avoidリスト: 過去に破棄されたセリフ

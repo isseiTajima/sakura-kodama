@@ -38,6 +38,10 @@ export function GetContext() {
   return window['go']['main']['App']['GetContext']();
 }
 
+export function HandleQuestionAnswer(arg1, arg2, arg3) {
+  return window['go']['main']['App']['HandleQuestionAnswer'](arg1, arg2, arg3);
+}
+
 export function InstallOllama() {
   return window['go']['main']['App']['InstallOllama']();
 }

@@ -13,11 +13,11 @@ func TestInferMood_SuccessReturnsHappy(t *testing.T) {
 	}
 }
 
-func TestInferMood_FailReturnsConcerned(t *testing.T) {
+func TestInferMood_FailReturnsNegative(t *testing.T) {
 	ev := MonitorEvent{State: types.StateFail}
 	mood := InferMood(ev)
-	if mood != MoodConcerned {
-		t.Errorf("want %s for fail state, got %s", MoodConcerned, mood)
+	if mood != MoodNegative {
+		t.Errorf("want %s for fail state, got %s", MoodNegative, mood)
 	}
 }
 

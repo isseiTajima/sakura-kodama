@@ -222,6 +222,7 @@ func (e *Engine) addHistory(msg string) {
 func (e *Engine) StartupGreeting(ctx context.Context) {
 	// フロントエンドの Wails ウィンドウ初期化を待つ（5秒では足りないケースがある）
 	time.Sleep(10 * time.Second)
+	log.Println("[ENGINE] StartupGreeting: woke up, checking Ollama...")
 	// Ollamaの準備を待つ（ベストエフォート）
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
@@ -232,6 +233,7 @@ func (e *Engine) StartupGreeting(ctx context.Context) {
 		}
 		time.Sleep(2 * time.Second)
 		if ctx.Err() != nil {
+			log.Println("[ENGINE] StartupGreeting: context cancelled, aborting")
 			return
 		}
 	}
@@ -240,7 +242,9 @@ func (e *Engine) StartupGreeting(ctx context.Context) {
 	if e.cfg.SetupCompleted {
 		reason = llm.ReasonGreeting
 	}
+	log.Printf("[ENGINE] StartupGreeting: dispatching reason=%s", reason)
 	e.DispatchSpeech("greeting_event", e.lastEvent, reason, "")
+	log.Println("[ENGINE] StartupGreeting: done")
 }
 
 // OnUserClick はユーザークリック時のセリフを生成する。
@@ -299,8 +303,10 @@ func (e *Engine) DispatchSpeech(eventType string, ev monitor.MonitorEvent, reaso
 	prof := e.profile.Get()
 	text, prompt, backend := e.speech.Generate(ev, e.cfg, reason, prof, question)
 	if text == "" {
+		log.Printf("[ENGINE] DispatchSpeech: speech was empty (reason=%s eventType=%s)", reason, eventType)
 		return
 	}
+	log.Printf("[ENGINE] DispatchSpeech: speech=%q backend=%s", text, backend)
 
 	world, emotion := e.situation.GetState()
 	e.addHistory(text)

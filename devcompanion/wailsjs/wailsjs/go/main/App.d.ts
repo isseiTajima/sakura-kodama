@@ -23,6 +23,8 @@ export function ExpandForOnboarding():Promise<void>;
 
 export function GetContext():Promise<context.Context>;
 
+export function HandleQuestionAnswer(arg1:string,arg2:number,arg3:string):Promise<void>;
+
 export function InstallOllama():Promise<void>;
 
 export function ListOllamaModels():Promise<Array<string>>;

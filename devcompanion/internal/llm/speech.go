@@ -95,13 +95,16 @@ func highPriorityReason(r Reason) bool {
 
 func (sg *SpeechGenerator) Generate(e monitor.MonitorEvent, cfg *config.Config, reason Reason, prof profile.DevProfile, question string) (string, string, string) {
 	if highPriorityReason(reason) {
+		log.Printf("[LLM] Generate: high-priority reason=%s, acquiring lock", reason)
 		sg.mu.Lock() // 高優先度: 必ず実行（別の生成が終わるまで待つ）
+		log.Printf("[LLM] Generate: lock acquired for reason=%s", reason)
 	} else if !sg.mu.TryLock() {
 		return "", "", ""
 	}
 	defer sg.mu.Unlock()
 
 	if cfg.Mute {
+		log.Printf("[LLM] Generate: muted, skipping reason=%s", reason)
 		return "", "", ""
 	}
 
@@ -129,9 +132,8 @@ func (sg *SpeechGenerator) Generate(e monitor.MonitorEvent, cfg *config.Config, 
 		sg.failStreak = 0
 	}
 
-	finalSpeech := postProcess(speech, cfg.Language)
-	log.Printf("[DEBUG] Generated speech [%s]: '%s'", backend, finalSpeech)
-	return finalSpeech, prompt, backend
+	log.Printf("[DEBUG] Generated speech [%s]: '%s'", backend, speech)
+	return speech, prompt, backend
 }
 
 func (sg *SpeechGenerator) IsUsingFallback() bool {
@@ -244,9 +246,15 @@ func (sg *SpeechGenerator) generateTextLocked(e monitor.MonitorEvent, cfg *confi
 		if cfg.UserName != "" {
 			speech = strings.ReplaceAll(speech, "〇〇", cfg.UserName)
 		}
+		speech = postProcess(speech, cfg.Language)
+		if speech == "" {
+			continue
+		}
 		if sg.state != nil {
 			sg.state.AddLine(speech)
 		}
+		// 発話済みセリフをAvoidリストに追加（次の補充時に重複生成を防ぐ）
+		sg.pool.AddDiscarded(key, speech)
 		return speech, "[POOL]", "Pool"
 	}
 
@@ -292,12 +300,21 @@ func (sg *SpeechGenerator) generateDirect(e monitor.MonitorEvent, cfg *config.Co
 		LastAnswer:       sg.lastSpeech,
 		PersonalityType:  sg.inferPersonalityType(reason, cfg),
 		RelationshipMode: string(cfg.RelationshipMode),
-		LearnedTraits:    make(map[string]float64),
-		RandomSeed:       time.Now().UnixNano() % 100000,
+		LearnedTraits:      make(map[string]float64),
+		LearnedTraitLabels: make(map[string]string),
+		RandomSeed:         time.Now().UnixNano() % 100000,
 	}
 
 	for k, v := range prof.Personality.Traits {
 		input.LearnedTraits[string(k)] = v
+	}
+	// 回答テキストを優先して渡す（float より意味が明確）
+	// 複数回答がある場合は全履歴を結合してLLMに矛盾を認識させる
+	for k, prog := range prof.Evolution {
+		label := traitLabelFromProgress(prog)
+		if label != "" {
+			input.LearnedTraitLabels[string(k)] = label
+		}
 	}
 
 	maxRetries := 3
@@ -313,6 +330,13 @@ func (sg *SpeechGenerator) generateDirect(e monitor.MonitorEvent, cfg *config.Co
 		if err != nil || backend == "Fallback" {
 			sg.usingFallback = true
 			return sg.fallbackSpeech(reason, cfg), "[FALLBACK]", "Fallback"
+		}
+		// postProcess をリトライループ内で適用し、言語混入があればリトライ
+		text = postProcess(text, cfg.Language)
+		if text == "" {
+			dupCount++
+			log.Printf("[INFO] postProcess discarded output (%d/%d), retrying", retry+1, maxRetries)
+			continue
 		}
 		if sg.state != nil && sg.state.IsDuplicate(text) {
 			dupCount++
@@ -345,22 +369,31 @@ func (sg *SpeechGenerator) triggerRefill(key, personality, relationship, categor
 	// 直近の発言履歴をavoidリストとして注入（バッチ生成の重複を防ぐ）
 	var recentLines []string
 	if sg.state != nil {
-		recentLines = sg.state.GetRecentLines(5)
+		recentLines = sg.state.GetRecentLines(20)
 	}
 
 	// 動的Avoidリスト: 過去に破棄されたセリフパターンをバッチプロンプトに注入
 	discardedPatterns := sg.pool.GetDiscarded(key)
 
+	traitLabels := make(map[string]string)
+	for k, prog := range prof.Evolution {
+		label := traitLabelFromProgress(prog)
+		if label != "" {
+			traitLabels[string(k)] = label
+		}
+	}
+
 	req := BatchRequest{
-		Personality:       personality,
-		RelationshipMode:  relationship,
-		Category:          category,
-		Language:          language,
-		UserName:          userName,
-		LearnedTraits:     make(map[string]float64),
-		Count:             poolBatchSize,
-		RecentLines:       recentLines,
-		DiscardedPatterns: discardedPatterns,
+		Personality:        personality,
+		RelationshipMode:   relationship,
+		Category:           category,
+		Language:           language,
+		UserName:           userName,
+		LearnedTraits:      make(map[string]float64),
+		LearnedTraitLabels: traitLabels,
+		Count:              poolBatchSize,
+		RecentLines:        recentLines,
+		DiscardedPatterns:  discardedPatterns,
 	}
 
 	for k, v := range prof.Personality.Traits {
@@ -381,19 +414,26 @@ func (sg *SpeechGenerator) triggerRefill(key, personality, relationship, categor
 		}
 	}
 	if len(speeches) == 0 {
+		// log.Printf("[POOL] BatchGenerate returned 0 speeches for %s", key)
 		return
 	}
 
+	// log.Printf("[POOL] BatchGenerate returned %d speeches for %s:", len(speeches), key)
+	// for i, s := range speeches {
+	// 	log.Printf("[POOL]   [%d] %q", i+1, s)
+	// }
+
 	// 生成されたセリフをバリデーション。破棄されたものは動的Avoidリストに追加。
 	validSpeeches := make([]string, 0, len(speeches))
+	// log.Printf("[POOL] Validation results:")
 	for _, s := range speeches {
 		if isValidSpeechForLang(s, language) {
 			validSpeeches = append(validSpeeches, s)
 		} else {
-			log.Printf("[POOL] Discarded unnatural speech: %s", s)
 			sg.pool.AddDiscarded(key, s) // 動的Avoidリストに記録
 		}
 	}
+	// log.Printf("[POOL] Validation: %d/%d passed", len(validSpeeches), len(speeches))
 
 	// 評価LLMで上位evalKeepCount件に絞り込む（複数候補がある場合のみ）
 	if len(validSpeeches) > evalKeepCount {
@@ -401,21 +441,31 @@ func (sg *SpeechGenerator) triggerRefill(key, personality, relationship, categor
 		if sg.state != nil {
 			recentForEval = sg.state.GetRecentLines(3)
 		}
+		log.Printf("[EVAL] Evaluating %d valid candidates:", len(validSpeeches))
+		for i, s := range validSpeeches {
+			log.Printf("[EVAL]   [%d] %q", i+1, s)
+		}
 		if selected := sg.evaluateCandidates(context.Background(), validSpeeches, recentForEval, language); selected != nil {
 			filtered := make([]string, 0, len(selected))
 			for _, idx := range selected {
 				filtered = append(filtered, validSpeeches[idx])
 			}
-			log.Printf("[EVAL] Selected %d/%d speeches via evaluator", len(filtered), len(validSpeeches))
+			log.Printf("[EVAL] Selected %d/%d via evaluator:", len(filtered), len(validSpeeches))
+			for i, s := range filtered {
+				log.Printf("[EVAL]   -> [%d] %q", i+1, s)
+			}
 			validSpeeches = filtered
+		} else {
+			log.Printf("[EVAL] Evaluator returned nil (using all %d valid speeches)", len(validSpeeches))
 		}
 	}
 
 	if len(validSpeeches) > 0 {
 		sg.pool.Push(key, validSpeeches)
+		// log.Printf("[POOL] Pushed %d speeches to pool %s", len(validSpeeches), key)
 	} else {
 		// 全件破棄された場合は一定時間リトライを抑制する（Ollama無駄呼び出し防止）
-		log.Printf("[POOL] All speeches discarded for %s, setting cooldown %v", key, poolRefillCooldown)
+		// log.Printf("[POOL] All speeches discarded for %s, setting cooldown %v", key, poolRefillCooldown)
 		sg.pool.SetCooldown(key, poolRefillCooldown)
 	}
 }
@@ -514,6 +564,13 @@ func wrongScriptRunes(s, lang string) bool {
 		case r >= 0x0400 && r <= 0x04FF: return true // キリル文字
 		case r >= 0x0590 && r <= 0x05FF: return true // ヘブライ語
 		case r >= 0x0E00 && r <= 0x0E7F: return true // タイ語
+		// 簡体字中国語（日本語では使わない簡略字体）
+		case r == 0x6837: return true // 样（日本語は様 U+69D8）
+		case r == 0x4EEC: return true // 们（日本語では不使用）
+		case r == 0x8FD9: return true // 这（日本語では不使用）
+		case r == 0x65F6: return true // 时（日本語は時 U+6642）
+		case r == 0x4E3A: return true // 为（日本語は為 U+70BA）
+		case r == 0x4E1C: return true // 东（日本語は東 U+6771）
 		}
 		// 英語設定では日本語・CJK 系も不正
 		if lang == "en" {
@@ -619,7 +676,19 @@ func isValidSpeechForLang(s, lang string) bool {
 	}
 
 	// 日本語モード: 禁止ワード・比喩のチェック
-	banned := []string{"魔法", "ダンス", "宝石", "芸術", "宝物"}
+	banned := []string{
+		"魔法", "ダンス", "宝石", "芸術", "宝物",
+		// サービス業口調
+		"お手伝いできること", "お力になれ", "サポートさせ", "かしこまりました",
+		// 物理的に見えない・聞こえないものへの言及
+		"顔色", "キーボードを叩く音", "キーボードの音",
+		// 意味不明パターン
+		"的样子",
+		// さくらが操作・行動するかのような表現（さくらはシステムを操作できない）
+		"配置変えました", "確認してきます", "確認してみます", "見てきます",
+		"調べてきます", "やってきます", "直しておきます", "開いておきます",
+		"やっておきます", "しておきます",
+	}
 	for _, b := range banned {
 		if strings.Contains(s, b) {
 			return false
@@ -636,12 +705,29 @@ func isValidSpeechForLang(s, lang string) bool {
 
 // FrequencyController は発話頻度を制御する。
 type FrequencyController struct {
-	mu                sync.Mutex
-	lastState         types.ContextState
-	lastSpeakTime     time.Time
-	cooldownUntil     time.Time
-	consecutive       int
-	lastWebSpeakTime  time.Time
+	mu               sync.Mutex
+	lastState        types.ContextState
+	lastSpeakTime    time.Time
+	cooldownUntil    time.Time
+	consecutive      int
+	lastWebSpeakTime time.Time
+	lastImportantAt  time.Time // GitCommit/Push/Success/Fail直後のタイムスタンプ
+}
+
+// routineInterval は SpeechFrequency に基づく通常イベント（active_edit等）の最小発話間隔を返す。
+//
+//   - freq=1 (低): 5分   — セリフが希少になり、一言一言が際立つ
+//   - freq=2 (中): 3分   — デフォルト。2〜3分に1回程度
+//   - freq=3 (高): 90秒  — ユーザーが頻度を望んでいる場合
+func routineInterval(freq int) time.Duration {
+	switch freq {
+	case 1:
+		return 5 * time.Minute
+	case 3:
+		return 90 * time.Second
+	default: // 2
+		return 3 * time.Minute
+	}
 }
 
 func NewFrequencyController() *FrequencyController {
@@ -666,6 +752,11 @@ func (fc *FrequencyController) ShouldSpeak(reason Reason, state types.ContextSta
 		return true
 	}
 
+	// ハード下限: 30秒（どのイベントも連続しては出ない）
+	if !fc.lastSpeakTime.IsZero() && now.Sub(fc.lastSpeakTime) < 30*time.Second {
+		return false
+	}
+
 	// Webブラウジングは専用クールダウン（3分）で制御
 	if reason == ReasonWebBrowsing {
 		if !fc.lastWebSpeakTime.IsZero() && now.Sub(fc.lastWebSpeakTime) < 3*time.Minute {
@@ -674,8 +765,29 @@ func (fc *FrequencyController) ShouldSpeak(reason Reason, state types.ContextSta
 		return true
 	}
 
-	if !fc.lastSpeakTime.IsZero() && now.Sub(fc.lastSpeakTime) < 30*time.Second {
-		return false
+	// 通常イベント: SpeechFrequency 連動インターバル + 重要イベント直後2分抑制
+	isRoutine := reason == ReasonActiveEdit ||
+		reason == ReasonDocWriting ||
+		reason == ReasonAISessionActive ||
+		reason == ReasonProductiveToolActivity ||
+		reason == ReasonNightWork ||
+		reason == ReasonIdle ||
+		reason == ReasonLongInactivity ||
+		reason == ReasonInitObservation ||
+		reason == ReasonInitSupport ||
+		reason == ReasonInitCuriosity ||
+		reason == ReasonInitMemory
+	if isRoutine {
+		// 重要イベント（コミット・エラー等）直後2分間は通常発話を抑制
+		// → 重要セリフの余韻を守る
+		const postImportantSuppression = 2 * time.Minute
+		if !fc.lastImportantAt.IsZero() && now.Sub(fc.lastImportantAt) < postImportantSuppression {
+			return false
+		}
+		if now.Sub(fc.lastSpeakTime) < routineInterval(cfg.SpeechFrequency) {
+			return false
+		}
+		return true
 	}
 
 	switch reason {
@@ -689,15 +801,14 @@ func (fc *FrequencyController) ShouldSpeak(reason Reason, state types.ContextSta
 		if !cfg.Monologue || now.Before(fc.cooldownUntil) {
 			return false
 		}
-		
+		// ThinkingTick も SpeechFrequency に連動（通常間隔より長め）
 		interval := 10 * time.Minute
 		switch cfg.SpeechFrequency {
 		case 1:
 			interval = 20 * time.Minute
 		case 3:
-			interval = 1 * time.Minute 
+			interval = 5 * time.Minute
 		}
-
 		if now.Sub(fc.lastSpeakTime) < interval {
 			return false
 		}
@@ -713,10 +824,18 @@ func (fc *FrequencyController) RecordSpeak(reason Reason, state types.ContextSta
 
 	fc.lastSpeakTime = now
 	fc.lastState = state
+
 	if reason == ReasonWebBrowsing {
 		fc.lastWebSpeakTime = now
 	}
-	
+
+	// 重要イベントとして記録（直後の通常発話抑制に使う）
+	isImportant := reason == ReasonGitCommit || reason == ReasonGitPush ||
+		reason == ReasonSuccess || reason == ReasonFail || reason == ReasonDevSessionStarted
+	if isImportant {
+		fc.lastImportantAt = now
+	}
+
 	if reason == ReasonThinkingTick {
 		fc.consecutive++
 		if fc.consecutive >= 3 {
@@ -782,6 +901,28 @@ func getTimeOfDay(h int, lang string) string {
 		key = "time.night"
 	}
 	return i18n.T(lang, key)
+}
+
+// traitLabelFromProgress は TraitProgress から LLM に渡すラベル文字列を生成する。
+// 複数回答がある場合は全履歴を " / " で結合し、LLMに回答の幅（矛盾含む）を伝える。
+func traitLabelFromProgress(prog types.TraitProgress) string {
+	// 有効な回答だけを収集（"対象なし" を除く）
+	var answers []string
+	seen := make(map[string]bool)
+	for _, a := range prog.AskedTopics {
+		if a != "" && a != "対象なし" && !seen[a] {
+			seen[a] = true
+			answers = append(answers, a)
+		}
+	}
+	// AskedTopics になくて LastAnswer にある場合は追加
+	if prog.LastAnswer != "" && prog.LastAnswer != "対象なし" && !seen[prog.LastAnswer] {
+		answers = append(answers, prog.LastAnswer)
+	}
+	if len(answers) == 0 {
+		return ""
+	}
+	return strings.Join(answers, " / ")
 }
 
 func (sg *SpeechGenerator) fallbackSpeech(reason Reason, cfg *config.Config) string {
