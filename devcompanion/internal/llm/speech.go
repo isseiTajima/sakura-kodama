@@ -191,6 +191,8 @@ func (sg *SpeechGenerator) GenerateQuestion(userName string, trait types.TraitID
 	cleaned = regexp.MustCompile(`」([,}\]])`).ReplaceAllString(cleaned, `"$1`)
 	cleaned = strings.ReplaceAll(cleaned, "」", "")
 	cleaned = strings.ReplaceAll(cleaned, "「", "")
+	// LLM が options を ["a"],["b"],["c"] と出力する壊れ形式を ["a","b","c"] に修復する
+	cleaned = strings.ReplaceAll(cleaned, "],[", ",")
 	var q types.Question
 	if err := json.Unmarshal([]byte(cleaned), &q); err != nil {
 		return types.Question{}, fmt.Errorf("json unmarshal failed. cleaned text: %s, error: %w", cleaned, err)
