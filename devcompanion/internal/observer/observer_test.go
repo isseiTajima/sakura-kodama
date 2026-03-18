@@ -12,7 +12,7 @@ func TestObserver_OnMonitorEvent(t *testing.T) {
 	o, _ := NewDevObserver(".")
 	o.UpdateFrequency(3) // お喋り
 
-	now := time.Now()
+	now := time.Date(2025, 1, 1, 10, 0, 0, 0, time.UTC) // 固定時刻（深夜判定を避ける）
 
 	// 1. Idle 検知テスト
 	o.OnMonitorEvent(monitor.MonitorEvent{State: types.StateIdle}, now)

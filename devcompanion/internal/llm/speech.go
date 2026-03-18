@@ -666,9 +666,14 @@ func isValidSpeechForLang(s, lang string) bool {
 		if regexp.MustCompile(`[\p{Hiragana}\p{Katakana}\p{Han}]`).MatchString(s) {
 			return false
 		}
-		// 春・花の詩的比喩、日本語スラングを弾く
+		// 春・花の詩的比喩、コード内容・五感言及を弾く
 		bannedEN := []string{"blossom", "spring breeze", "spring wind", "unfurl", "gentle stream", "petal", "senpai", "cherry",
-			"lovely to see", "lovely to watch", "i feel calm", "i feel safe", "i feel peaceful", "watching you work", "observing your"}
+			"lovely to see", "lovely to watch", "i feel calm", "i feel safe", "i feel peaceful", "watching you work", "observing your",
+			// コード内容禁止
+			"code looks clean", "code looks nice", "code looks neat", "code looks readable", "looks organized",
+			"colors changed", "color changed", "color of your code",
+			// 五感禁止
+			"smell", "coffee aroma", "keyboard sound", "i can hear"}
 		sl := strings.ToLower(s)
 		for _, b := range bannedEN {
 			if strings.Contains(sl, b) {
@@ -685,6 +690,13 @@ func isValidSpeechForLang(s, lang string) bool {
 		"お手伝いできること", "お力になれ", "サポートさせ", "かしこまりました",
 		// 物理的に見えない・聞こえないものへの言及
 		"顔色", "キーボードを叩く音", "キーボードの音",
+		// コード内容・見た目言及（さくらはコードの中身・色・見た目を見ることができない）
+		"コードの色", "コードが綺麗", "コードが読みやす", "コードが見やす",
+		"コードが整理", "コードが形", "コードが伸び",
+		"見やすいコード", "見やすい配置", "見やすくなっ",
+		"綺麗になって", "綺麗なコード",
+		// 五感禁止（さくらは嗅覚・聴覚・触覚を持たない）
+		"コーヒーの香り", "コーヒーの匂い", "いい香り", "香りがし",
 		// 意味不明パターン
 		"的样子",
 		// さくらが操作・行動するかのような表現（さくらはシステムを操作できない）
