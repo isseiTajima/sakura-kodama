@@ -1,9 +1,0 @@
-./build.go
-./buildcommon.go
-./common.go
-./dev.go
-./doctor.go
-./generate.go
-./init.go
-./show.go
-./update.go

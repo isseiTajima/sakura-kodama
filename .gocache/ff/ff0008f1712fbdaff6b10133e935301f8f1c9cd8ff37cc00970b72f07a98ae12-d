@@ -1,5 +1,0 @@
-./doc.go
-./input.go
-./keyboard.go
-./tty_unix.go
-./utils.go

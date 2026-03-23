@@ -1,0 +1,19 @@
+# Go cache and module path
+.gocache/
+.gopath/
+
+# Takt / development tool logs
+takt_*.log
+takt_continue.log
+test_err.txt
+test_out.txt
+
+# macOS
+.DS_Store
+
+# AI agent / dev tool configs (private)
+.takt/
+
+# Internal development notes
+PROGRESS.md
+models.json

@@ -1,0 +1,17 @@
+# Build outputs
+bin/
+build/bin/
+devcompanion
+sakura-kodama
+
+# Go cache
+.gocache/
+
+# npm cache
+.npm-cache/
+
+# macOS
+.DS_Store
+
+# AI agent / dev tool configs (private)
+.takt/

@@ -1,1 +1,8 @@
-tests/e2e/results/
+node_modules/
+dist/
+.vite/
+
+# Generated / test artifacts
+package.json.md5
+test-results/
+.takt/

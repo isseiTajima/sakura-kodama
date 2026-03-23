@@ -1,6 +1,0 @@
-./base.go
-./build.go
-./builder.go
-./desktop.go
-./nsis_installer.go
-./packager.go

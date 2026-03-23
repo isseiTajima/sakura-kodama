@@ -1,6 +1,0 @@
-./aicli.go
-./claude.go
-./fallback.go
-./ollama.go
-./router.go
-./speech.go

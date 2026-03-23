@@ -1,6 +1,0 @@
-./fallback.go
-./ollama.go
-./speech.go
-./fallback_test.go
-./ollama_test.go
-./speech_test.go
