@@ -86,7 +86,8 @@ func (p *ProactiveEngine) Tick(ev monitor.MonitorEvent) {
 	}
 
 	world, _ := p.dispatcher.WorldState()
-	if world.IsDeepWork {
+	// DeepWork中でも完全ブロックしない: 10%の確率で通過（長時間集中でも存在感を保つ）
+	if world.IsDeepWork && rand.Float64() > 0.10 {
 		return
 	}
 
