@@ -21,14 +21,21 @@
 
   let cfg = { ...defaultConfig }
   let installedModels = []
+  let ollamaConnected = true
   let pullingModel = ''
   let pullPercent = 0
   let pullStatus = ''
   let otherModelsOpen = false
 
+  async function refreshModels() {
+    const result = await listOllamaModels()
+    ollamaConnected = result !== null
+    installedModels = result ?? []
+  }
+
   onMount(async () => {
     cfg = await loadConfig()
-    installedModels = await listOllamaModels()
+    await refreshModels()
     onPullProgress((p) => {
       if (p.error) {
         pullStatus = `${t.errorPrefix} ${p.error}`
@@ -171,6 +178,12 @@
       <label>Ollama Endpoint
         <input type="text" bind:value={cfg.ollama_endpoint} />
       </label>
+      {#if !ollamaConnected}
+        <div class="ollama-warn">
+          ⚠️ Ollama が起動していません
+          <button class="retry-btn" onclick={refreshModels}>再接続</button>
+        </div>
+      {/if}
       <div class="model-section-label">{t.localModel}</div>
       <div class="model-list">
         {#if currentEntry}
@@ -398,6 +411,8 @@
     background: #d81b60;
   }
 
+  .ollama-warn { display: flex; align-items: center; justify-content: space-between; background: #fff8e1; border: 1px solid #ffe082; border-radius: 5px; padding: 4px 6px; font-size: 9px; color: #f57f17; margin-bottom: 4px; }
+  .retry-btn { background: none; border: 1px solid #f57f17; color: #f57f17; border-radius: 4px; font-size: 9px; padding: 1px 6px; cursor: pointer; }
   .model-section-label { font-size: 9px; color: #666; margin-bottom: 3px; }
   .other-models-toggle { background: none; border: none; width: 100%; text-align: left; font-size: 9px; color: #aaa; padding: 2px 0; cursor: pointer; }
   .model-list { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }

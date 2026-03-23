@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: devcompanion
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: devcompanion/go.mod
+          cache-dependency-path: devcompanion/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: devcompanion/frontend/package-lock.json
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Build
+        run: wails build -platform darwin/universal
+
+      - name: Create DMG
+        run: |
+          hdiutil create \
+            -volname "Sakura Kodama" \
+            -srcfolder "build/bin/Sakura Kodama.app" \
+            -ov -format UDZO \
+            "sakura-kodama-${{ github.ref_name }}-macos.dmg"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: devcompanion/sakura-kodama-${{ github.ref_name }}-macos.dmg
+          generate_release_notes: true
+          body: |
+            ## インストール方法 / Installation
+
+            1. `.dmg` をダウンロードしてマウント
+            2. `Sakura Kodama.app` をアプリケーションフォルダへドラッグ
+            3. 初回起動時は右クリック → 開く（Gatekeeper回避）
+
+            > **Note:** このビルドはコード署名なしです。起動時に「開発元を検証できない」と表示される場合は、右クリック → 開く を選んでください。

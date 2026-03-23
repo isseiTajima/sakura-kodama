@@ -238,9 +238,10 @@ export async function deleteModel(modelName: string): Promise<void> {
   await nativeDeleteModel(modelName)
 }
 
-export async function listOllamaModels(): Promise<string[]> {
+export async function listOllamaModels(): Promise<string[] | null> {
   if (!hasRuntime()) return []
-  return nativeListOllamaModels()
+  const result = await nativeListOllamaModels() as unknown as string[] | null
+  return result
 }
 
 export async function pullModel(modelName: string): Promise<void> {

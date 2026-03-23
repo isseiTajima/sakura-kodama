@@ -13,7 +13,7 @@
   let { onClose = () => {}, currentSpeech = '' } = $props();
   const dispatch = createEventDispatcher()
 
-  type Step = 'welcome' | 'ask_name' | 'detect' | 'ask_method' | 'select_model' | 'confirm_brew' | 'input_claude' | 'installing' | 'finish'
+  type Step = 'welcome' | 'privacy' | 'ask_name' | 'detect' | 'ask_method' | 'select_model' | 'confirm_brew' | 'input_claude' | 'installing' | 'finish'
   let currentStep = $state<Step>('welcome')
 
   let setupStatus = $state({ is_first_run: true, detected_backends: [] as string[], has_claude_key: false, has_brew: false })
@@ -34,7 +34,7 @@
       config = await loadConfig()
       if (config) userName = config.user_name
       await new Promise(r => setTimeout(r, 2000))
-      currentStep = 'ask_name'
+      currentStep = 'privacy'
     } catch (err) {
       currentStep = 'ask_name'
     }
@@ -133,6 +133,19 @@
     {#if currentStep === 'welcome'}
       <p>はじめまして！サクラです。<br/>一緒に開発を楽しみましょう！</p>
       <div class="loading-dots"><span>.</span><span>.</span><span>.</span></div>
+
+    {:else if currentStep === 'privacy'}
+      <p style="text-align:left; font-size:10px; line-height:1.6;">
+        🔒 <b>サクラがアクセスするデータ</b><br/>
+        ・ファイルの変更・作成・削除<br/>
+        ・実行中のプロセス名<br/>
+        ・ブラウジングのドメイン名<br/>
+        <br/>
+        コードの中身は読みません。<br/>
+        LLMへは作業状況の要約のみ送ります。<br/>
+        データはすべてローカルに保存されます。
+      </p>
+      <button class="primary" onclick={() => currentStep = 'ask_name'}>了解しました！</button>
 
     {:else if currentStep === 'ask_name'}
       <p>あなたのことをなんと呼べばいいですか？</p>

@@ -6,6 +6,13 @@ Japanese version: [README.ja.md](README.ja.md)
 
 ---
 
+## Screenshots
+
+<!-- TODO: Add screenshot/GIF here -->
+> *Screenshot coming soon*
+
+---
+
 ## Overview
 
 Sakura Kodama is a desktop AI companion for developers. A small character named Sakura lives in the corner of your screen, observes your activity, and occasionally speaks — not to give advice, but simply to be there.
