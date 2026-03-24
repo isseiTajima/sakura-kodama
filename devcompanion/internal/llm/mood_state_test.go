@@ -6,7 +6,8 @@ import (
 )
 
 func TestInferMoodState(t *testing.T) {
-	now := time.Now()
+	// 固定時刻（14:00 UTC）を使用して時刻依存テストを安定させる
+	afternoon := time.Date(2025, 1, 1, 14, 0, 0, 0, time.UTC)
 
 	tests := []struct {
 		name          string
@@ -17,21 +18,21 @@ func TestInferMoodState(t *testing.T) {
 	}{
 		{
 			name:          "ReasonFail should return MoodStateFail",
-			lastEventTime: now,
+			lastEventTime: afternoon,
 			successStreak: 0,
 			lastReason:    ReasonFail,
 			want:          MoodStateFail,
 		},
 		{
 			name:          "SuccessStreak >= 3 should return MoodStateExcited",
-			lastEventTime: now,
+			lastEventTime: afternoon,
 			successStreak: 3,
 			lastReason:    ReasonSuccess,
 			want:          MoodStateExcited,
 		},
 		{
 			name:          "SuccessStreak < 3 should return MoodStateHappy",
-			lastEventTime: now,
+			lastEventTime: afternoon,
 			successStreak: 2,
 			lastReason:    ReasonSuccess,
 			want:          MoodStateHappy,
