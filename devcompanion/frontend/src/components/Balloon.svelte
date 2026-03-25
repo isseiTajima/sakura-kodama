@@ -62,7 +62,10 @@
 
     visible = true
     if (!showInstallButton) {
-      timer = setTimeout(() => { visible = false }, 4000)
+      // 文字数に応じて表示時間を調整（最低8秒、20文字以上は+200ms/文字、最大12秒）
+      const len = Array.from(text).length
+      const ms = Math.min(12000, Math.max(8000, len * 200))
+      timer = setTimeout(() => { visible = false }, ms)
     }
   })
 

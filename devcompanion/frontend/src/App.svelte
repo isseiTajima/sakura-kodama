@@ -174,8 +174,8 @@
 
   const isRightSide = $derived(cfg.window_position?.endsWith('right'))
   const isTopSide = $derived(cfg.window_position?.startsWith('top'))
-  // バルーンが消えたら即座にニュートラルに戻す
-  const displayedMood = $derived(isTalking ? appMood : 'Neutral')
+  // appMood を常に反映する（Focus/Sadness などはステータスが続く限り維持）
+  const displayedMood = $derived(appMood || 'Neutral')
 </script>
 
 <main>

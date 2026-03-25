@@ -51,7 +51,7 @@ describe('Balloon', () => {
       await unmount(balloon)
     })
 
-    it('4000ms後にバルーンを非表示にする', async () => {
+    it('8000ms後にバルーンを非表示にする', async () => {
       // Given: テキストありでバルーンが表示されている
       const balloon = mount(Balloon, {
         target: document.body,
@@ -60,8 +60,8 @@ describe('Balloon', () => {
       await flush()
       expect(document.querySelector('.balloon')).not.toBeNull()
 
-      // When: 4000ms 経過
-      vi.advanceTimersByTime(4000)
+      // When: 8000ms 経過（5文字 → max(8000, 5*200) = 8000ms）
+      vi.advanceTimersByTime(8000)
       await flush()
 
       // Then: バルーンが非表示になる
@@ -70,7 +70,7 @@ describe('Balloon', () => {
       await unmount(balloon)
     })
 
-    it('4000ms未満ではバルーンを表示し続ける', async () => {
+    it('8000ms未満ではバルーンを表示し続ける', async () => {
       // Given: テキストありでバルーンが表示されている
       const balloon = mount(Balloon, {
         target: document.body,
@@ -78,8 +78,8 @@ describe('Balloon', () => {
       })
       await flush()
 
-      // When: 3999ms 経過（タイムアウト直前）
-      vi.advanceTimersByTime(3999)
+      // When: 7999ms 経過（タイムアウト直前）
+      vi.advanceTimersByTime(7999)
       await flush()
 
       // Then: まだ表示されている
