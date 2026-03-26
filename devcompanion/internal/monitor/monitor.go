@@ -72,15 +72,10 @@ func New(cfg *config.AppConfig, watchDir string) (*Monitor, error) {
 
 	// センサーの登録
 	m.sensors = append(m.sensors, sensor.NewFSSensor(watchDir))
-	// AI エージェント（バイブコーディングツール）と通常エディタを両方監視
-	m.sensors = append(m.sensors, sensor.NewProcessSensor([]string{
-		"claude",    // Claude Code
-		"cursor",    // Cursor
-		"windsurf",  // Windsurf
-		"copilot",   // GitHub Copilot CLI
-		"aider",     // Aider
-		"vscode", "code", "iterm", // 通常エディタ（AI判定には含めない）
-	}, 2*time.Second))
+	// AIエージェントをプロセス名・コマンドライン両方から動的検知
+	m.sensors = append(m.sensors, sensor.NewAIAgentSensor(3*time.Second))
+	// 通常エディタ監視（AI判定とは別）
+	m.sensors = append(m.sensors, sensor.NewProcessSensor([]string{"vscode", "code", "iterm"}, 5*time.Second))
 	m.sensors = append(m.sensors, sensor.NewWebSensor(5*time.Second))
 
 	if cfg != nil {
@@ -206,21 +201,10 @@ func (m *Monitor) InjectSignal(sig types.Signal) {
 	}
 }
 
-// isAIAgentProcess は AI エージェントのプロセス名かどうかを判定する。
-// ProcessSensor は Source=SourceProcess で発火するため、プロセス名で判定する。
-// vscode/code/iterm は通常エディタなので AI セッション扱いしない。
-func isAIAgentProcess(name string) bool {
-	switch strings.ToLower(name) {
-	case "claude", "cursor", "windsurf", "copilot", "aider":
-		return true
-	}
-	return false
-}
-
 func (m *Monitor) classifySignal(sig types.Signal) types.HighLevelEvent {
 	switch sig.Type {
 	case types.SigProcessStarted:
-		if sig.Source == types.SourceAgent || isAIAgentProcess(sig.Value) {
+		if sig.Source == types.SourceAgent {
 			if !m.aiSessionActive {
 				m.aiSessionActive = true
 				return types.EventAISessionStarted
