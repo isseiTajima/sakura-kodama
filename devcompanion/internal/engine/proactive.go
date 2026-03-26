@@ -21,8 +21,8 @@ var initiativeWeights = map[types.InitiativeType]float64{
 }
 
 const (
-	MinInitiativeInterval = 15 * time.Minute
-	InitiativeProbability = 0.03
+	MinInitiativeInterval = 8 * time.Minute  // 15min → 8min（発話機会を増やす）
+	InitiativeProbability = 0.07             // 3% → 7%（1000セリフ中2件は少なすぎた）
 )
 
 // ProactiveEngine は外部トリガーなしに Sakura が自発的に話しかける機能を担う。
@@ -86,8 +86,9 @@ func (p *ProactiveEngine) Tick(ev monitor.MonitorEvent) {
 	}
 
 	world, _ := p.dispatcher.WorldState()
-	// DeepWork中でも完全ブロックしない: 10%の確率で通過（長時間集中でも存在感を保つ）
-	if world.IsDeepWork && rand.Float64() > 0.10 {
+	// IsAISession中はDeepWorkブロックをスキップ（バイブコーディング中はユーザーは暇）
+	// DeepWork中でも完全ブロックしない: 30%の確率で通過
+	if world.IsDeepWork && !world.IsAISession && rand.Float64() > 0.30 {
 		return
 	}
 

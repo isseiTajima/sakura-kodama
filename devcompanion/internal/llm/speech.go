@@ -709,6 +709,12 @@ func isValidSpeechForLang(s, lang string) bool {
 		return false
 	}
 
+	// 短すぎるセリフを除外（感嘆符だけ・「えっ」だけなど）
+	runes := []rune(strings.TrimSpace(s))
+	if len(runes) < 5 {
+		return false
+	}
+
 	// アルファベットのみの単語が長すぎる場合は怪しい（コード混入の疑い）
 	words := strings.Fields(s)
 	for _, w := range words {
@@ -773,6 +779,9 @@ func isValidSpeechForLang(s, lang string) bool {
 		"休憩", "ストレッチ", "一休み",
 		// 飲み物への言及（「コーヒー飲んだ？」系を排除）
 		"コーヒー",
+		// 「集中」は34%を占める単調パターン。観察できるのは作業継続時間のみであり
+		// 「集中してる」と決めつけるのはNG（バイブコーディング中はAIが作業している）
+		"集中",
 		// 季節比喩（ユーザーの好きな季節を毎回引用するパターンを防ぐ）
 		"夏みたい", "春みたい", "秋みたい", "冬みたい",
 		"夏っぽい", "春っぽい", "秋っぽい", "冬っぽい",

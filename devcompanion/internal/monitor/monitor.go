@@ -198,10 +198,18 @@ func (m *Monitor) InjectSignal(sig types.Signal) {
 	}
 }
 
+// isAIAgentProcess は AI エージェントのプロセス名かどうかを判定する。
+// ProcessSensor は Source=SourceProcess で発火するため、プロセス名で判定する。
+func isAIAgentProcess(name string) bool {
+	n := strings.ToLower(name)
+	return n == "claude" || strings.HasPrefix(n, "claude") ||
+		n == "cursor" || n == "windsurf" || n == "copilot"
+}
+
 func (m *Monitor) classifySignal(sig types.Signal) types.HighLevelEvent {
 	switch sig.Type {
 	case types.SigProcessStarted:
-		if sig.Source == types.SourceAgent {
+		if sig.Source == types.SourceAgent || isAIAgentProcess(sig.Value) {
 			if !m.aiSessionActive {
 				m.aiSessionActive = true
 				return types.EventAISessionStarted
